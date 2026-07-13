@@ -37,8 +37,9 @@ public final class ChartsVM {
     public var metricsToQuery: [String] = []
 
     /// Окно live-режима, сек (правый край = now, следит за реальным временем).
-    /// Выбирается пикером; при значениях шире live-буфера (~15 мин) окно
-    /// подтягивается из daemon-истории и мержится с буфером (гладкий хвост).
+    /// Выбирается пикером; при доступном хелпере окно любой ширины подтягивается
+    /// из daemon-истории и мержится с живым хвостом буфера — иначе после открытия
+    /// страницы график пуст, пока буфер не наполнится.
     public private(set) var liveWindowSeconds: TimeInterval = 900
     /// Daemon-история для текущего live-окна (метрика → бакетированные точки).
     /// Обновляется таймером ~каждые 4 с; в `ChartData` мержится с live-буфером.
@@ -62,9 +63,6 @@ public final class ChartsVM {
     @ObservationIgnored private var captureTask: Task<Void, Never>?
     @ObservationIgnored private var rangeTask: Task<Void, Never>?
     @ObservationIgnored private var liveHistoryTask: Task<Void, Never>?
-    /// Порог: окна шире этого (сек) в live-режиме подтягиваются из daemon-истории
-    /// (буфер столько не держит), уже — рисуются только буфером.
-    @ObservationIgnored private let liveBufferSpan: TimeInterval = 900
     @ObservationIgnored private var tickCounter = 0
     @ObservationIgnored private var scrolling = false
     /// Как часто перерисовывать тяжёлые графики (сек) — независимо от 1s-сбора.
@@ -218,8 +216,7 @@ public final class ChartsVM {
     private func restartLiveHistory() {
         stopLiveHistory()
         liveHistory = [:]
-        guard liveWindowSeconds > liveBufferSpan,
-              runtime.helperSupportsHistory, runtime.xpcClient != nil else { return }
+        guard runtime.helperSupportsHistory, runtime.xpcClient != nil else { return }
         liveHistoryTask = Task { @MainActor [weak self] in
             await self?.liveHistoryLoop()
         }
@@ -310,6 +307,21 @@ public final class ChartsVM {
     /// (`Δts > 3 × bucketSeconds`).
     public func rangeSegments(for metric: String) -> [[HistoryPoint]] {
         Self.splitSegments(series[metric] ?? [], gap: Double(rangeBucketSeconds) * 3) { $0.ts }
+    }
+
+    // MARK: - Live merge
+
+    /// Делит данные live-окна на «прошлое» (daemon-история) и «живой хвост» (буфер).
+    /// Хвост — последний непрерывный сегмент буфера (свежие точки текущего капчера);
+    /// история обрезается до его начала. Стале-фрагменты буфера от прошлых посещений
+    /// страницы отбрасываются — их регион покрывает daemon-история.
+    public static func liveMergeSplit(history: [HistoryPoint],
+                                      bufferSegments: [[LiveMetricBuffer.Point]])
+        -> (history: [HistoryPoint], tail: [LiveMetricBuffer.Point]) {
+        guard let tail = bufferSegments.last, let tailStart = tail.first?.ts else {
+            return (history, [])
+        }
+        return (history.filter { $0.ts < tailStart }, tail)
     }
 
     // MARK: - Segmentation

@@ -88,25 +88,28 @@ enum ChartData {
         let raw: [[ChartPlotPoint]]
         switch charts.mode {
         case .live:
-            if charts.liveWindowSeconds <= liveWindow || (charts.liveHistory[metric]?.isEmpty ?? true) {
-                // Узкое окно (или нет daemon-истории) — только live-буфер.
-                raw = charts.liveSegments(for: metric, window: min(charts.liveWindowSeconds, liveWindow)).map { seg in
+            let bufferSegments = charts.liveSegments(for: metric,
+                                                     window: min(charts.liveWindowSeconds, liveWindow))
+            if charts.liveHistory[metric]?.isEmpty ?? true {
+                // Нет daemon-истории (helper недоступен / ещё не подгрузилась) — только live-буфер.
+                raw = bufferSegments.map { seg in
                     seg.enumerated().map {
                         ChartPlotPoint(id: $0.offset, ts: $0.element.ts,
                                        value: $0.element.value, lo: $0.element.value, hi: $0.element.value)
                     }
                 }
             } else {
-                // Широкое окно — daemon-история (старая часть) + буфер (гладкий хвост).
-                let bufferPts = charts.livePoints(for: metric, window: liveWindow).map {
-                    ChartPlotPoint(id: 0, ts: $0.ts, value: $0.value, lo: $0.value, hi: $0.value)
-                }
-                let bufferStart = bufferPts.first?.ts
-                let history = charts.liveHistory[metric] ?? []
-                let older = (bufferStart.map { bs in history.filter { $0.ts < bs } } ?? history).map {
+                // Daemon-история (прошлое) + живой хвост буфера. Стале-фрагменты буфера
+                // отброшены — их регион покрывает история.
+                let (olderHistory, tail) = ChartsVM.liveMergeSplit(history: charts.liveHistory[metric] ?? [],
+                                                                   bufferSegments: bufferSegments)
+                let older = olderHistory.map {
                     ChartPlotPoint(id: 0, ts: $0.ts, value: $0.avg, lo: $0.min, hi: $0.max)
                 }
-                let merged = (older + bufferPts).sorted { $0.ts < $1.ts }
+                let tailPts = tail.map {
+                    ChartPlotPoint(id: 0, ts: $0.ts, value: $0.value, lo: $0.value, hi: $0.value)
+                }
+                let merged = (older + tailPts).sorted { $0.ts < $1.ts }
                 raw = splitByGap(merged, gap: Double(charts.rangeBucketSeconds) * 3).map { seg in
                     seg.enumerated().map {
                         ChartPlotPoint(id: $0.offset, ts: $0.element.ts,
