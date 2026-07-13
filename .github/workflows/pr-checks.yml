@@ -1,0 +1,36 @@
+name: PR Checks
+
+on:
+  pull_request:
+    branches: [master]
+    types: [opened, synchronize, reopened]
+
+jobs:
+  test:
+    name: Swift Test
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run tests
+        run: |
+          swift test 2>&1 | tee test_output.txt
+          exit_code=${PIPESTATUS[0]}
+
+          # Парсинг строки "Executed N tests, with M failures"
+          result_line=$(grep "Executed .* tests, with .* failures" test_output.txt | tail -1)
+          if [ -n "$result_line" ]; then
+            total=$(echo "$result_line" | sed 's/.*Executed \([0-9]*\) tests.*/\1/')
+            failures=$(echo "$result_line" | sed 's/.*with \([0-9]*\) failures.*/\1/')
+            passed=$((total - failures))
+
+            if [ "$failures" -eq 0 ]; then
+              echo "::notice title=Tests::✅ $passed/$total passed"
+              echo "### ✅ Tests: $passed/$total passed" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "::error title=Tests::❌ $passed/$total passed, $failures/$total failed"
+              echo "### ❌ Tests: $passed/$total passed, $failures/$total failed" >> $GITHUB_STEP_SUMMARY
+            fi
+          fi
+
+          exit $exit_code

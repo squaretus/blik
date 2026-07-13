@@ -1,0 +1,34 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    name: Build PKG & Publish Release
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Build release PKG
+        run: |
+          chmod +x scripts/build.sh
+          scripts/build.sh "${{ steps.version.outputs.VERSION }}"
+
+      # Релиз в этот же репозиторий — источник автообновления
+      # (BlikHelper.UpdateChecker опрашивает Releases API этого репо каждые 6 часов).
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: .build/release_build/Blik-${{ steps.version.outputs.VERSION }}.pkg
+          name: Blik ${{ steps.version.outputs.VERSION }}
+          generate_release_notes: true

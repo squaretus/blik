@@ -1,0 +1,34 @@
+#!/bin/bash
+set -e
+# Права на helper binary
+chown root:wheel /Library/PrivilegedHelperTools/com.blik.helper
+chmod 755 /Library/PrivilegedHelperTools/com.blik.helper
+# Права на LaunchDaemon plist
+chown root:wheel /Library/LaunchDaemons/com.blik.helper.plist
+chmod 644 /Library/LaunchDaemons/com.blik.helper.plist
+# Права на LaunchAgent plist
+chown root:wheel /Library/LaunchAgents/com.blik.app.plist
+chmod 644 /Library/LaunchAgents/com.blik.app.plist
+# Загрузить daemon (system-wide, root)
+launchctl bootstrap system /Library/LaunchDaemons/com.blik.helper.plist
+
+# Определить GUI-пользователя (при обновлении через daemon $USER=root)
+CONSOLE_USER=$(/usr/bin/stat -f '%Su' /dev/console 2>/dev/null || echo "")
+if [ -n "$CONSOLE_USER" ] && [ "$CONSOLE_USER" != "root" ]; then
+    CURRENT_UID=$(id -u "$CONSOLE_USER")
+else
+    CURRENT_UID=$(id -u "$USER")
+fi
+
+# Загрузить LaunchAgent (RunAtLoad=true запустит app)
+launchctl bootstrap gui/"$CURRENT_UID" /Library/LaunchAgents/com.blik.app.plist 2>/dev/null || true
+
+# Fallback: если bootstrap не запустил app (уже зарегистрирован) — запустить напрямую
+sleep 1
+if ! pgrep -x BlikMenuBar > /dev/null 2>&1; then
+    sudo -u "$CONSOLE_USER" open /Applications/Blik.app 2>/dev/null || true
+fi
+
+# Убедиться что /usr/local/bin существует
+mkdir -p /usr/local/bin
+exit 0

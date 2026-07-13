@@ -1,0 +1,29 @@
+# Swift / SPM
+.build/
+Package.resolved
+
+# Xcode
+*.xcodeproj/
+*.xcworkspace/
+xcuserdata/
+DerivedData/
+
+# macOS
+.DS_Store
+*.swp
+*~
+
+# Runtime
+blik.log
+sudo
+
+# IDE
+.vscode/
+.idea/
+*.sublime-*
+
+# Claude plugins
+docs/superpowers/*
+
+# Superpowers brainstorm artifacts
+.superpowers/
