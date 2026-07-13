@@ -18,7 +18,7 @@ Privileged LaunchDaemon executable (root) — the only process system-wide with 
   - Read API: `readAllFans(reply:)`, `readAllSensors(reply:)`, `readState(reply:)` — JSON-encoded SMC reads dispatched onto `smcQueue`. `readResources(reply:)` — returns a raw `ResourceSnapshot` (CPU/RAM/GPU/disk counters via `ResourceReader`), also dispatched onto `smcQueue`; daemon stays stateless (no per-client prev snapshot — delta is the client's job).
   - Write API: `setFanSpeedPreset(percentage:reply:)` — reads fans, calls `writer.setAllFansSpeed`, fills `targetSpeeds` (cleared on 0%); `restoreAutoMode(reply:)` — explicit client-initiated restore.
   - `uninstallAll(reply:)` — restores auto, replies, sleeps 0.5 s, then `performUninstall(removeApp: true)`.
-  - `getHelperVersion(reply:)` → `BlikXPCConstants.helperVersion` (currently `"2.9.0"`).
+  - `getHelperVersion(reply:)` → `BlikXPCConstants.protocolVersion` (currently `"2.11.0"`) — the XPC-protocol capability level, not the release version; the client's `Constants.minHelperVersionFor*` gates compare against it. See bugs/release-version-vs-protocol-gates.md.
   - License: `validateLicense(key:hardwareId:reply:)` / `getLicenseStatus(reply:)` <!-- removed --> — license logic removed from helper; protocol no longer declares these methods.
   - Update: `checkForUpdate(reply:)` (cache-first), `checkForUpdateForced(reply:)` (always GitHub), `performUpdate(reply:)` (reject if `isUpdating` or no newer version; reply immediately, then download + install on a `userInitiated` queue after 0.5 s).
 - `ClientAuthorization` (caseless enum):
@@ -34,7 +34,7 @@ Privileged LaunchDaemon executable (root) — the only process system-wide with 
 
 ## Dependencies
 - BlikCore — SMC stack (`SMCConnection`, `SMCReader`, `SMCWriter`), resource stack (`ResourceReader`, `ResourceSnapshot`), models (`FanInfo`, `SensorInfo`, `UpdateInfo`, `SemanticVersion`, `StateSnapshot`), `HardwareID`, `Constants`, `JSONLogFormatter` + `LogLevel`. (Previously also `LicenseChecker` / `LicenseInfo` <!-- removed -->.)
-- BlikXPC — `BlikHelperProtocol` (`@objc`), `BlikXPCConstants` (machServiceName `com.blik.helper`, helperVersion).
+- BlikXPC — `BlikHelperProtocol` (`@objc`), `BlikXPCConstants` (machServiceName `com.blik.helper`, `protocolVersion`).
 - Foundation — `NSXPCListener`, `DispatchSource` timers, `URLSession`, `FileManager`, `Process`, `NSLock`, `DispatchWorkItem`.
 - Darwin — `proc_pidpath` for resolving XPC client executable paths (`ClientAuthorization`).
 - IOKit (transitively via BlikCore) — AppleSMC, `IOPlatformSerialNumber` for hardware ID.

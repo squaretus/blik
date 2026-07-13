@@ -15,8 +15,8 @@ echo "=== Blik $VERSION — сборка ==="
 echo "Подстановка версии $VERSION..."
 sed -i '' "s/public static let appVersion = \".*\"/public static let appVersion = \"$VERSION\"/" \
     Sources/BlikCore/Constants.swift
-sed -i '' "s/public static let helperVersion = \".*\"/public static let helperVersion = \"$VERSION\"/" \
-    Sources/BlikXPC/XPCConstants.swift
+# XPCConstants.protocolVersion НЕ подставляется: это версия XPC-протокола, а не релиза.
+# Подстановка релизной версии (1.x) ломала capability-гейты minHelperVersionFor* (2.x).
 sed -i '' "s/<string>[0-9]*\.[0-9]*\.[0-9]*<\/string>/<string>$VERSION<\/string>/g" \
     Resources/Blik-Info.plist
 sed -i '' "s/<string>[0-9]*\.[0-9]*\.[0-9]*<\/string>/<string>$VERSION<\/string>/g" \

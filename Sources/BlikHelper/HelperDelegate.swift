@@ -395,7 +395,7 @@ class HelperDelegate: NSObject, BlikHelperProtocol, NSXPCListenerDelegate {
     }
 
     func getHelperVersion(reply: @escaping (String) -> Void) {
-        reply(BlikXPCConstants.helperVersion)
+        reply(BlikXPCConstants.protocolVersion)
     }
 
     // MARK: - Auto-Update protocol
