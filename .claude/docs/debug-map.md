@@ -19,6 +19,13 @@
 - Check: `FanControlVM.refreshData()` legacy path (`readAllFans` + `readAllSensors`) means `supportsReadState` is false; `BlikRuntime.helperSupportsHistory` false → empty charts. Settings status only probes XPC connection, not gates — misleading.
 - bugs/release-version-vs-protocol-gates.md
 
+## If a live Charts window is near-empty / X-axis collapsed on 5 or 15 min while 30 min+ is fine — see live narrow-window history backfill
+- Mechanism: narrow live windows (≤ buffer span, 900 s) used to draw ONLY from the in-memory `LiveMetricBuffer` (fills only while page visible); daemon history was gated to windows wider than the buffer, so a fresh page had a thin/stale buffer and `MetricChart.window` clamped the left axis to available data. Fix pulls history for ANY live window and merges history + live buffer tail.
+- `Sources/BlikShared/Charts/ChartsVM.swift` (`restartLiveHistory` — gate now only `helperSupportsHistory` + `xpcClient`; `liveMergeSplit(history:bufferSegments:)`; `liveBufferSpan` removed)
+- `Sources/BlikApp/Views/Charts/ChartFormatting.swift` (`ChartData.segments` live branch — buffer-only only when history absent, else merge history + tail)
+- Check: `liveHistory[metric]` empty ⇒ helper unavailable or history not yet loaded (buffer-only fallback); stale buffer fragments are dropped by `liveMergeSplit` (keeps last contiguous segment as tail).
+- bugs/live-narrow-window-empty-charts.md
+
 ## If idle CPU/RAM of Blik.app creeps up over hours/days (menu-bar-only, main window closed) — see MenuBarExtra observation-tracking leak
 - Diagnose: `sample <pid>` shows continuous CA display-cycle + `ObservationRegistrar.registerTracking/cancel` + `AnyKeyPath.hash` churn; `heap <pid> | grep ObservationRegistrar` count grows ~2/sec (fresh process ~35, flat).
 - `Sources/BlikApp/Views/MenuBar/MenuBarPopupView.swift` (`isPresented` gate, `.onAppear`/`.onDisappear`)
