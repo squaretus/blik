@@ -1,7 +1,7 @@
 # BlikXPC
 
 ## Purpose
-Cross-process contract between the privileged `BlikHelper` daemon (root) and unprivileged clients (`blik` CLI, `BlikMenuBar`, `BlikApp`). Owns the single `@objc` XPC protocol, the Mach service name and helper version constants, a connection wrapper that exposes both raw `@objc` proxy access and `DispatchSemaphore`-based sync wrappers for the CLI, plus the `UpdateService` facade that hides the proxy/JSON dance behind a result-typed API (sync flavor for CLI, async flavor for SwiftUI).
+Cross-process contract between the privileged `BlikHelper` daemon (root) and unprivileged clients (`blik` CLI, `BlikMenuBar`, `BlikApp`). Owns the single `@objc` XPC protocol, the Mach service name and XPC-protocol version constant, a connection wrapper that exposes both raw `@objc` proxy access and `DispatchSemaphore`-based sync wrappers for the CLI, plus the `UpdateService` facade that hides the proxy/JSON dance behind a result-typed API (sync flavor for CLI, async flavor for SwiftUI).
 
 The module is pure plumbing: no SMC, no filesystem, no networking — all of those live behind the XPC boundary in `BlikHelper`. Its only data dependency is on the `Codable` payload types from `BlikCore`.
 
@@ -15,7 +15,7 @@ The module is pure plumbing: no SMC, no filesystem, no networking — all of tho
 
 ### Constants
 - `BlikXPCConstants.machServiceName: String` — `"com.blik.helper"`. Must match `NSXPCListener(machServiceName:)` in `Sources/BlikHelper/main.swift` and `MachServices` in `Resources/LaunchDaemon.plist`.
-- `BlikXPCConstants.helperVersion: String` — version stamp (e.g. `"1.5.1"`), substituted by `scripts/build.sh` before compilation alongside `Constants.appVersion` in BlikCore.
+- `BlikXPCConstants.protocolVersion: String` — XPC-protocol capability level (currently `"2.11.0"`). **Decoupled from the marketing release version (`Constants.appVersion`) — `scripts/build.sh` does NOT substitute it.** Bumped manually only when the XPC surface changes (new methods / payload contracts). The client's `Constants.minHelperVersionFor*` capability gates compare against this value; a gate must never exceed the current `protocolVersion` (invariant locked by `Tests/BlikXPCTests/XPCProtocolVersionTests.swift`). Formerly named `helperVersion` and stamped with the release version — that caused the release-version-vs-protocol-gates regression (see bugs/release-version-vs-protocol-gates.md).
 
 ### `BlikHelperProtocol` (`@objc public`)
 The complete XPC ABI. All methods take `@escaping` reply blocks; reply payloads use the conventions "`Data?` = JSON-encoded `Codable` (nil on error)" and "`String?` = nil on success, non-nil error message".
@@ -26,7 +26,7 @@ The complete XPC ABI. All methods take `@escaping` reply blocks; reply payloads 
 - `readResources(reply: (Data?, String?) → Void)` — `ResourceSnapshot` JSON (raw point-in-time counters). The daemon is **stateless** here — it returns raw counters only; the client (`ResourceVM`) holds the previous snapshot and runs `ResourceUsageCalculator` to derive `%`/rate. Has a sync wrapper (`readResourcesSync`).
 - `setFanSpeedPreset(percentage: Int, reply: (String?) → Void)` — `0` = auto, `25/50/75/100` = manual percentage; applies to all fans atomically.
 - `restoreAutoMode(reply: (String?) → Void)` — equivalent to `setFanSpeedPreset(percentage: 0)`.
-- `getHelperVersion(reply: (String) → Void)` — used as a ping by `connectAndVerify()`; non-optional `String` return distinguishes it from data calls.
+- `getHelperVersion(reply: (String) → Void)` — replies `BlikXPCConstants.protocolVersion`; used as a ping by `connectAndVerify()` and as the source of the daemon's protocol level for the client capability gates. Non-optional `String` return distinguishes it from data calls.
 - `uninstallAll(reply: (String?) → Void)` — daemon-side full uninstall (binaries, plists, logs, TCC, PKG receipt).
 - `checkForUpdate(reply: (Data?, String?) → Void)` — `UpdateInfo` JSON from daemon cache.
 - `checkForUpdateForced(reply: (Data?, String?) → Void)` — `UpdateInfo` JSON from a fresh GitHub Releases API call.
@@ -77,7 +77,7 @@ Facade that hides JSON decoding, `nil` handling, and the proxy lookup from updat
 Sync API discards the daemon-supplied error string when `info == nil` and substitutes `"Не удалось проверить обновления"`. Async API preserves the original `error` string from the protocol reply.
 
 ## Dependencies
-- `BlikCore` — `FanInfo`, `SensorInfo`, `StateSnapshot`, `ResourceSnapshot`, `UpdateInfo` (all `Codable`); plus `Constants` indirectly via the helper version stamping in `scripts/build.sh`. <!-- LicenseInfo removed: license endpoints no longer in BlikXPC -->
+- `BlikCore` — `FanInfo`, `SensorInfo`, `StateSnapshot`, `ResourceSnapshot`, `UpdateInfo` (all `Codable`), `SemanticVersion`, plus `Constants.minHelperVersionFor*` gates that are compared against `protocolVersion`. <!-- LicenseInfo removed: license endpoints no longer in BlikXPC -->
 - `Foundation` — `NSXPCConnection`, `NSXPCInterface`, `DispatchSemaphore`, `JSONDecoder`, `NSLock`, `NSLog`.
 - No third-party packages.
 - Runtime: Mach service `com.blik.helper` must be published by `BlikHelper` via `launchd` (`/Library/LaunchDaemons/com.blik.helper.plist`). Without a registered listener, `connect()` still appears to succeed locally but no replies arrive.
@@ -94,7 +94,7 @@ Sync API discards the daemon-supplied error string when `info == nil` and substi
 ## Invariants / assumptions
 <!-- generated, verify -->
 - `BlikXPCConstants.machServiceName` is the single source of truth for the Mach name. It must remain equal to the `MachServices` key in `Resources/LaunchDaemon.plist` and the argument to `NSXPCListener(machServiceName:)` in `BlikHelper/main.swift`. Divergence makes the connection silently dead.
-- `BlikHelperProtocol` is the **only** ABI between client and daemon. Adding, removing, reordering, or changing method signatures is a breaking change across processes; client and daemon binaries must be rebuilt and re-installed in lockstep. `getHelperVersion` and `BlikXPCConstants.helperVersion` exist precisely so a client can detect protocol drift after PKG upgrades.
+- `BlikHelperProtocol` is the **only** ABI between client and daemon. Adding, removing, reordering, or changing method signatures is a breaking change across processes; client and daemon binaries must be rebuilt and re-installed in lockstep. `getHelperVersion` and `BlikXPCConstants.protocolVersion` exist precisely so a client can detect protocol drift after PKG upgrades — `protocolVersion` tracks XPC-surface capability, NOT the marketing release, and is bumped manually (build.sh must not stamp it, or the client's own capability gates break — `XPCProtocolVersionTests`).
 - `Data?` payloads carry JSON of the statically-expected `Codable` type. There is no version tag, discriminator, or fallback shape — schemas are coupled by type identity in `BlikCore`.
 - `String?` reply parameters follow "nil = success, non-nil = error message". All `…Sync` wrappers that return `String?` preserve this convention.
 - `BlikXPCClient` is intended as a long-lived singleton per process (held by `BlikRuntime` for SwiftUI clients, by `XPCFanController` for CLI). Reconnect after invalidation is the caller's responsibility — the client only nils its `connection` field and does not auto-reconnect.
@@ -105,7 +105,8 @@ Sync API discards the daemon-supplied error string when `info == nil` and substi
 ## Failure hotspots
 <!-- generated, verify -->
 - **Daemon not running / not registered.** `connect()` returns silently and `proxy()` produces a usable proxy object, but replies never arrive. Wrappers with `.distantFuture` timeout (`readAllFansSync`, `readAllSensorsSync`, `setFanSpeedPresetSync`, `restoreAutoModeSync`, `uninstallAllSync`, `performUpdateSync`) block the caller indefinitely. Always run `connectAndVerify()` (2 s timeout via `getHelperVersion`) before issuing real calls and treat its `false` return as "fall back to direct SMC or surface unavailable state".
-- **Schema drift after upgrade.** If a `Codable` payload type in `BlikCore` changes shape on one side only, `try? JSONDecoder().decode(...)` returns `nil` and the wrapper surfaces "no data". The daemon's error string is **not** populated in this case because decoding fails on the client. Bump `helperVersion` and verify both sides on any protocol-adjacent change.
+- **Schema drift after upgrade.** If a `Codable` payload type in `BlikCore` changes shape on one side only, `try? JSONDecoder().decode(...)` returns `nil` and the wrapper surfaces "no data". The daemon's error string is **not** populated in this case because decoding fails on the client. Bump `protocolVersion` and verify both sides on any protocol-adjacent change.
+- **Release version stamped into `protocolVersion`.** Historically `build.sh` `sed`ed the marketing version into this constant; a release number below a `minHelperVersionFor*` gate made a freshly built helper fail its own capability checks → «история недоступна» + legacy double-round-trip live polling. `protocolVersion` must stay decoupled from the release; `XPCProtocolVersionTests` guards it. See bugs/release-version-vs-protocol-gates.md.
 - **Reply block invoked twice or never.** XPC crashes the *daemon* process if a reply block is called more than once, and the *client* sync wrapper hangs until timeout if a reply path forgets to call back. Server-side discipline lives in `BlikHelper.HelperDelegate`; any new method must trace every code path to exactly one reply.
 - **`callErrorSync` connection-loss path.** When `proxy()` returns `nil` (e.g. invalidated connection), the wrapper synthesizes `"XPC connection not established"`. When the reply never fires, the pre-seeded `"XPC call did not complete"` survives; on timeout the wrapper substitutes `"XPC call timed out"`. Callers must distinguish these synthetic errors from a real daemon-reported error string — all are surfaced as `String?` non-nil with no discriminator.
 - **`.privileged` option requires a privileged listener.** The Mach service must be installed as a LaunchDaemon (root), not a LaunchAgent. Running a SwiftUI client against a dev `swift build` without the PKG-installed daemon will fail to bind, and the failure surfaces only as "replies never arrive" — see the first hotspot.
@@ -120,3 +121,4 @@ Sync API discards the daemon-supplied error string when `info == nil` and substi
 - modules/blik-cli.md
 - modules/blik-menubar.md
 - modules/blik-app.md
+- bugs/release-version-vs-protocol-gates.md

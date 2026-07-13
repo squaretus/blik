@@ -16,10 +16,10 @@ A single command — `scripts/build.sh <VERSION>` — patches version strings in
    - The script `set -euo pipefail`s; first failure aborts.
    - Defaults to `1.0.0` if no argument is passed.
 
-2. **Version substitution.** Three files are edited in place via `sed -i ''`:
+2. **Version substitution.** The script edits in place via `sed -i ''`:
    - `Sources/BlikCore/Constants.swift` — `public static let appVersion = "..."`
-   - `Sources/BlikXPC/XPCConstants.swift` — `public static let helperVersion = "..."`
    - `Resources/Blik-Info.plist` and `Resources/BlikApp-Info.plist` — every `<string>X.Y.Z</string>` is rewritten (covers both `CFBundleVersion` and `CFBundleShortVersionString`).
+   - **`Sources/BlikXPC/XPCConstants.swift` is NOT touched.** `protocolVersion` (formerly `helperVersion`) is the XPC-protocol capability level, not the release version, and is bumped manually only when the XPC surface changes. The old `sed` on this file caused the release-version-vs-protocol-gates regression (a release version below `minHelperVersionFor*` made a fresh helper fail its own capability gates → «история недоступна» + legacy live-polling). See bugs/release-version-vs-protocol-gates.md.
    - These edits land in the working tree and are **not** reverted by the script — commit or `git checkout --` them yourself afterwards.
 
 3. **SwiftPM release builds** (sequential):
@@ -89,7 +89,8 @@ Workflow `.github/workflows/release.yml`, runs on `macos-26`:
 
 <!-- generated, verify -->
 
-- **`sed` edits left in working tree.** After a local build, `git status` will show modified `Constants.swift`, `XPCConstants.swift`, `Blik-Info.plist`, `BlikApp-Info.plist`. Commit deliberately or revert with `git checkout --`.
+- **`sed` edits left in working tree.** After a local build, `git status` will show modified `Constants.swift`, `Blik-Info.plist`, `BlikApp-Info.plist`. `XPCConstants.swift` is **not** modified by the build anymore. Commit deliberately or revert with `git checkout --`.
+- **Bumping `XPCConstants.protocolVersion`.** Only when the XPC surface changes (new/changed protocol methods or payload contracts). When raising a `Constants.minHelperVersionFor*` gate, bump `protocolVersion` to at least that value first — a gate above the current `protocolVersion` makes freshly built helpers fail their own capability checks (`XPCProtocolVersionTests` guards this).
 - **Ad-hoc codesign only.** `codesign --sign -` produces a locally trusted, non-Developer-ID signature. Gatekeeper will prompt on first launch on a fresh machine. For notarised distribution, this step needs a real identity + `notarytool`.
 - **App refuses to launch on macOS < 26.** `LSMinimumSystemVersion=26.0` in `BlikApp-Info.plist` despite the PKG accepting macOS 13+. Don't downgrade the plist without verifying SwiftUI APIs used (NavigationSplitView Liquid Glass effects, `.glassEffect`, etc. are 26-only).
 - **Daemon doesn't restart after install.** `postinstall` calls `launchctl bootstrap system /Library/LaunchDaemons/com.blik.helper.plist`. If a previous `bootout` (from `preinstall`) raced with the new bootstrap, the daemon may be in a stuck state — `launchctl print system/com.blik.helper` shows the current state; manual fix is `bootout` + `bootstrap`.

@@ -45,16 +45,17 @@ public enum Constants {
     /// Версия приложения
     public static let appVersion = "2.11.0"
 
-    /// Минимальная версия daemon'а, поддерживающая объединённый XPC-метод `readState`.
-    /// Клиент старше этой версии — использует `readAllFans` + `readAllSensors`.
+    /// Минимальная версия XPC-протокола daemon'а (`BlikXPCConstants.protocolVersion`),
+    /// поддерживающая объединённый метод `readState`.
+    /// Daemon старше этой версии — клиент использует `readAllFans` + `readAllSensors`.
     public static let minHelperVersionForReadState = "1.3.1"
 
-    /// Минимальная версия daemon'а, поддерживающая локальную историю метрик
-    /// (XPC-методы `queryHistory`/`listHistoryMetrics`). Клиент старше — range-режим
+    /// Минимальная версия XPC-протокола daemon'а, поддерживающая локальную историю метрик
+    /// (методы `queryHistory`/`listHistoryMetrics`). Daemon старше — range-режим
     /// графиков недоступен (empty-state вместо зависания на старом селекторе).
-    /// Значение = релиз, в котором история появилась (== текущий `appVersion`),
-    /// по образцу `minHelperVersionForReadState`. Не поднимать выше `appVersion` —
-    /// иначе свежий helper будет ошибочно считаться неподдерживающим историю.
+    /// Значение = `protocolVersion`, при котором история появилась. Не поднимать выше
+    /// текущего `BlikXPCConstants.protocolVersion` — иначе свежий helper будет ошибочно
+    /// считаться неподдерживающим историю (инвариант закреплён в `XPCProtocolVersionTests`).
     public static let minHelperVersionForHistory = "2.11.0"
 
     // MARK: - History (локальная запись метрик в daemon'е)

@@ -40,7 +40,7 @@ Products (library): `BlikCore`, `BlikShared`, `BlikDesign`. Все 8 targets —
 
 ## Индекс модулей
 - [blik-core](../docs/modules/blik-core.md) — ядро: SMC (IOKit), модели (Fan/Sensor/Resource/Update/State), Resources (CPU/RAM/GPU/Disk reader + калькулятор), **History** (MetricKey, MetricSample, MetricSampleMapper, HistoryQuery, HistoryStore — SQLite-стор с raw/rollup/retention), Constants.
-- [blik-xpc](../docs/modules/blik-xpc.md) — `@objc` XPC-протокол (fans/sensors/resources/state/update + **queryHistory/listHistoryMetrics**), `BlikXPCClient` sync-обёртки, `XPCConstants` (`helperVersion`), `UpdateService`.
+- [blik-xpc](../docs/modules/blik-xpc.md) — `@objc` XPC-протокол (fans/sensors/resources/state/update + **queryHistory/listHistoryMetrics**), `BlikXPCClient` sync-обёртки, `XPCConstants` (`protocolVersion`), `UpdateService`.
 - [blik-shared](../docs/modules/blik-shared.md) — `@Observable @MainActor` VM: `AppCoordinator` (owns fan/resource/update/settings + `metricNames`/`charts`/`chartWidgets`), FanControlVM, ResourceVM, UpdateVM, AppSettingsVM, **MetricNameStore** (инлайн-переименование), **Charts/** (ChartsVM, ChartTimeRange, ChartWidgetConfig/Store, LiveMetricBuffer, MetricCatalog), `BlikRuntime` (lazy SMC/XPC + `helperSupportsHistory`).
 - [blik-design](../docs/modules/blik-design.md) — токены (`DesignTokens`, `BlikPalette`, `AdaptiveColor`), `TemperatureColor`, `AppIcons`, компоненты (`BlikPageContainer`, `BlikBanner`, `BlikStatusPill`, `BlikPresetButtons`, `BlikSectionHeader`, `BlikSearch`, `BlikLogo`, `MenuBarImageRenderer`).
 - [blik-helper](../docs/modules/blik-helper.md) — root daemon: `HelperDelegate` (SMC serial queue, reinforce timer, auto-restore, update), **`HistoryRecorder`** (2 serial-очереди sampling/db, ретенция, активен пока открыт клиент), `ClientAuthorization`, `UpdateChecker`, `HelperLogger`.
@@ -53,7 +53,7 @@ Products (library): `BlikCore`, `BlikShared`, `BlikDesign`. Все 8 targets —
 - **Кнопки в content-слое:** `.buttonStyle(.borderedProminent)` + глобальный `.tint(DesignTokens.accent)` на корне `NavigationSplitView` (destructive → `.tint(DesignTokens.red)`). `.glass`/`.glassProminent` в content НЕ используем — Liquid Glass только на navigation layer.
 - **Новые вкладки:** обязательно обёртка `BlikPageContainer` + `BlikPageMetrics.rowInsets` на каждую `Section`.
 - **Шрифты:** только `DesignTokens.fontPrimary`/`fontPrimaryMedium`/`fontSecondary`. Числа в `Text` → `Text(verbatim:)`.
-- **XPC:** `@objc`-протокол, данные — JSON-encoded `Data`; версия хелпера `XPCConstants.helperVersion` (сейчас 2.11.0); range-режим графиков гейтится `BlikRuntime.helperSupportsHistory` (`Constants.minHelperVersionForHistory`).
+- **XPC:** `@objc`-протокол, данные — JSON-encoded `Data`; версия XPC-протокола `XPCConstants.protocolVersion` (сейчас 2.11.0) развязана с релизной (`build.sh` подставляет только `appVersion`), бампается вручную при изменении XPC-поверхности; range-режим графиков гейтится `BlikRuntime.helperSupportsHistory` (`Constants.minHelperVersionForHistory`), гейты не поднимать выше `protocolVersion` (инвариант — `XPCProtocolVersionTests`).
 - **История:** все чтения истории — только через XPC (root-owned WAL-БД нечитаема из user-процессов); хелпер клампит `maxPointsPerSeries ≤ 2000`, `metrics ≤ 32`.
 - **MenuBarExtra:** гейт `isPresented` в `MenuBarPopupView` — фикс утечки observation, не трогать.
 

@@ -22,13 +22,13 @@ Surface live system-resource usage (CPU per-core, RAM, GPU util/mem, disk IO) in
 - [removed] `OTLPMetricBuilder.ingest(resources:)` emitting gauges `cpu.core.*`, `cpu.usage.overall`, `gpu.usage`, `gpu.memory.*`, `memory.*`, `disk.io.*` — telemetry stack deleted.
 - Added: `MetricSectionListPage` (search + section list; former auth/gating removed) — `SensorsPage` refactored onto it, `ResourcesPage` built on it.
 - Modified: `MainContentView.detailView` `.resources` case, `SidebarTab` gains `.resources`.
-- Modified: version bumped `2.8.4 → 2.9.0` (`Constants.appVersion` / `BlikXPCConstants.helperVersion` via `scripts/build.sh`).
+- Modified: version bumped `2.8.4 → 2.9.0` (`Constants.appVersion` / `BlikXPCConstants.helperVersion` via `scripts/build.sh`). <!-- NOTE (fix/xpc-protocol-version): `helperVersion` was later renamed to `protocolVersion` and DECOUPLED from the release version — build.sh no longer stamps it. This historical entry reflects the state at the time. See bugs/release-version-vs-protocol-gates.md. -->
 
 ## Risks
 <!-- [removed] OTLPMetricBuilder.quantize unit-classification risk — telemetry stack deleted -->
 - GPU/disk readers depend on IORegistry key names (`IOAccelerator` PerformanceStatistics, `IOBlockStorageDriver` Statistics) that vary by hardware/firmware — best-effort `nil` is the contract; UI/telemetry must tolerate missing series.
 - Delta computed client-side: a missed poll or a `prevSnapshot` reset (sleep/wake, reconnect) yields one bogus high/zero CPU% / disk-rate sample. Calculator must guard against negative tick/byte deltas (counter reset).
-- `helperVersion` bumped to 2.9.0 — clients older than the helper without `readResources` fall back to local `ResourceReader` (read-only), so a version mismatch degrades gracefully rather than breaking.
+- `helperVersion` bumped to 2.9.0 — clients older than the helper without `readResources` fall back to local `ResourceReader` (read-only), so a version mismatch degrades gracefully rather than breaking. <!-- NOTE (fix/xpc-protocol-version): `helperVersion` → `protocolVersion`, now decoupled from the release version; the mismatch reasoning here is unchanged, only the constant's name/semantics. -->
 
 ## How to test
 - [ ] «Ресурсы» tab renders CPU per-core bars, RAM, GPU (when present), disk IO rates.

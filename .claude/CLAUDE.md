@@ -49,7 +49,7 @@ open /Applications/Blik.app                      # MenuBar через XPC
 - `Sources/BlikCore/Resources/` — чтение CPU/RAM/GPU/Disk (ResourceReader, ResourceUsageCalculator, CPUTopology)
 - `Sources/BlikCore/History/` — **локальная история метрик**: `MetricKey` (стабильные ID метрик), `MetricSample`, `MetricSampleMapper` (fans/sensors/reading → сэмплы), `HistoryQuery` (XPC-контракт), `HistoryStore` (SQLite: raw/rollup/retention)
 - `Sources/BlikCore/Constants.swift` — именованные константы (GitHub repo, интервалы, `minHelperVersionForHistory`, history-константы)
-- `Sources/BlikXPC/` — XPC протокол (BlikHelperProtocol, +`queryHistory`/`listHistoryMetrics`), XPCConstants (`helperVersion`), клиент (sync-обёртки), UpdateService
+- `Sources/BlikXPC/` — XPC протокол (BlikHelperProtocol, +`queryHistory`/`listHistoryMetrics`), XPCConstants (`protocolVersion` — версия XPC-протокола, бампается вручную, `build.sh` НЕ подставляет), клиент (sync-обёртки), UpdateService
 - `Sources/BlikShared/` — `@Observable @MainActor` VM-слой: `AppCoordinator` + `FanControlVM`/`ResourceVM`/`UpdateVM`/`AppSettingsVM` + `MetricNameStore` (инлайн-переименование метрик) + `Charts/` (ChartsVM, ChartTimeRange, ChartWidgetConfig/Store, LiveMetricBuffer, MetricCatalog) + `BlikRuntime` (lazy SMC/XPC + `helperSupportsHistory`)
 - `Sources/BlikDesign/` — токены (`DesignTokens`, `BlikPalette`, `AdaptiveColor`), компоненты (`BlikBanner`, `BlikStatusPill`, `BlikPresetButtons`, `BlikSectionHeader`, `BlikSearch`, `BlikPageContainer`, `BlikLogo`, `MenuBarImageRenderer`), цвета температуры
 - `Sources/BlikHelper/` — привилегированный daemon (HelperDelegate, **HistoryRecorder** — запись истории пока открыт клиент, ClientAuthorization, UpdateChecker, HelperLogger, main.swift)
@@ -81,7 +81,7 @@ open /Applications/Blik.app                      # MenuBar через XPC
 ## Локальная история и графики
 
 - **История (BlikCore/History + BlikHelper/HistoryRecorder):** daemon пишет метрики в SQLite `/Library/Application Support/Blik/history.db` каждые 5 с, пока открыт любой клиент (BlikApp/BlikMenuBar/CLI). Две serial-очереди (sampling / db) — чтения графиков никогда не ждут SMC. Ретенция: raw 24 ч, 1-мин роллапы 7 дней. Все чтения — только через XPC (`queryHistory`/`listHistoryMetrics`); root-owned WAL-БД нечитаема из user-процессов напрямую.
-- **XPC-версионирование:** range-режим графиков гейтится `BlikRuntime.helperSupportsHistory` (`Constants.minHelperVersionForHistory` vs `XPCConstants.helperVersion`); старый daemon → empty-state, не зависание.
+- **XPC-версионирование:** range-режим графиков гейтится `BlikRuntime.helperSupportsHistory` (`Constants.minHelperVersionForHistory` vs `XPCConstants.protocolVersion` daemon'а). Версия протокола развязана с релизной (`appVersion`): `build.sh` подставляет только релизную; гейты `minHelperVersionFor*` никогда не поднимать выше `protocolVersion` (инвариант — `XPCProtocolVersionTests`). Старый daemon → empty-state, не зависание.
 - **Вкладка «Графики» (`SidebarTab.charts`, `Sources/BlikApp/Views/Charts/`):** фиксированный набор виджетов-зеркал веб-«Избранного» (Swift Charts), по умолчанию live-поллинг, период не дальше 7 дней. Виджеты редактируются (метрики/пороги), не добавляются/удаляются.
 - **Переименование метрик (инлайн):** `EditableMetricLabel` на вкладках Температура/Ресурсы — hover → клик → поле → автосейв при потере фокуса, пусто = сброс к дефолту. Имена применяются в menubar-popup и легендах графиков (`MetricNameStore`).
 
