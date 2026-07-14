@@ -48,6 +48,22 @@ final class StatuslineRendererTests: XCTestCase {
 
     // MARK: - render (проверяем через stripANSI, как существующие тесты)
 
+    func testRenderUsesTruecolorNotPaletteCodes() {
+        // Базовые ANSI-16 коды ([32m и т.п.) перекрашиваются палитрой темы
+        // терминала — цвета уровней должны идти truecolor'ом (38;2;R;G;B).
+        let metrics = [
+            StatuslineMetric(label: "CPU", valueText: "48°", level: .ok, spark: [1, 2]),
+            StatuslineMetric(label: "E", valueText: "75°", level: .warn, spark: []),
+            StatuslineMetric(label: "GPU", valueText: "95°", level: .crit, spark: []),
+        ]
+        let out = StatuslineRenderer.render(metrics)
+        XCTAssertTrue(out.contains("\u{1B}[38;2;48;209;88m"))    // ok → systemGreen
+        XCTAssertTrue(out.contains("\u{1B}[38;2;255;214;10m"))   // warn → systemYellow
+        XCTAssertTrue(out.contains("\u{1B}[38;2;255;69;58m"))    // crit → systemRed
+        XCTAssertFalse(out.contains("\u{1B}[32m"))
+        XCTAssertFalse(out.contains("\u{1B}[90m"))
+    }
+
     func testRenderJoinsBlocksAndSkipsEmptySpark() {
         let metrics = [
             StatuslineMetric(label: "CPU", valueText: "48°", level: .ok, spark: [0, 7]),
