@@ -5,7 +5,7 @@
 - SwiftUI (GUI + MenuBar, `@Observable @MainActor` VM-слой), NSXPCConnection (привилегированный daemon).
 - SMC через IOKit — единственный процесс с прямым доступом — daemon `BlikHelper` (root).
 - Локальная история метрик — SQLite (системная libsqlite3, линкуется в `BlikCore`, без package-зависимости).
-- Внешние зависимости: `apple/swift-argument-parser` (CLI).
+- Внешние зависимости: `apple/swift-argument-parser` (CLI), `modelcontextprotocol/swift-sdk` (MCP-сервер в CLI).
 - Приложение полностью бесплатное: серверное лицензирование, auth и телеметрия вырезаны (2026-07-13); сервер списан, лэндинг — GitHub Pages (`squaretus/blik-landing`), релизы и авто-апдейт — GitHub Releases `squaretus/blik`.
 
 ## Персистентность
@@ -19,6 +19,8 @@ swift test                     # Тесты
 scripts/build.sh 1.2.0         # PKG-установщик → .build/release_build/Blik-1.2.0.pkg
 open /Applications/Blik.app    # GUI/MenuBar через XPC (после установки PKG)
 blik                           # CLI TUI через XPC (без sudo)
+blik claude-statusline         # Одна ANSI-строка метрик для статус-бара Claude Code
+blik mcp                       # MCP-сервер (stdio) для Claude Code
 sudo .build/debug/blik         # CLI напрямую через SMC (без установленного daemon'а)
 ```
 
@@ -44,7 +46,7 @@ Products (library): `BlikCore`, `BlikShared`, `BlikDesign`. Все 8 targets —
 - [blik-shared](../docs/modules/blik-shared.md) — `@Observable @MainActor` VM: `AppCoordinator` (owns fan/resource/update/settings + `metricNames`/`charts`/`chartWidgets`), FanControlVM, ResourceVM, UpdateVM, AppSettingsVM, **MetricNameStore** (инлайн-переименование), **Charts/** (ChartsVM, ChartTimeRange, ChartWidgetConfig/Store, LiveMetricBuffer, MetricCatalog), `BlikRuntime` (lazy SMC/XPC + `helperSupportsHistory`).
 - [blik-design](../docs/modules/blik-design.md) — токены (`DesignTokens`, `BlikPalette`, `AdaptiveColor`), `TemperatureColor`, `AppIcons`, компоненты (`BlikPageContainer`, `BlikBanner`, `BlikStatusPill`, `BlikPresetButtons`, `BlikSectionHeader`, `BlikSearch`, `BlikLogo`, `MenuBarImageRenderer`).
 - [blik-helper](../docs/modules/blik-helper.md) — root daemon: `HelperDelegate` (SMC serial queue, reinforce timer, auto-restore, update), **`HistoryRecorder`** (2 serial-очереди sampling/db, ретенция, активен пока открыт клиент), `ClientAuthorization`, `UpdateChecker`, `HelperLogger`.
-- [blik-cli](../docs/modules/blik-cli.md) — терминальный TUI (`FanController`, `XPCDataSource`/`SMCDataSource`, ANSI-рендер).
+- [blik-cli](../docs/modules/blik-cli.md) — терминальный TUI (`FanController`, `XPCDataSource`/`SMCDataSource`, ANSI-рендер) + сабкоманды для Claude Code: `claude-statusline` (`StatuslineRenderer`), `mcp` (`BlikMCPTools`, `XPCMetricsSource`).
 - [blik-menubar](../docs/modules/blik-menubar.md) — отдельный процесс MenuBarExtra (`FanDetailView`, `SensorSectionView`, `MenuBarLabel`).
 - [blik-app](../docs/modules/blik-app.md) — GUI (`NavigationSplitView`): вкладки Обзор/Температура/**Ресурсы**/**Графики** (`SidebarTab`), Preferences (App/About), Charts/ UI (виджеты Swift Charts), Shared/ (`EditableMetricLabel`, `MetricSectionListPage`), Sidebar/.
 
