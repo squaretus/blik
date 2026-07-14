@@ -7,7 +7,8 @@ import Foundation
 struct Blik: ParsableCommand {
     static let configuration = CommandConfiguration(
         abstract: "Терминальный контроллер вентиляторов MacBook Pro",
-        version: Constants.appVersion
+        version: Constants.appVersion,
+        subcommands: [ClaudeStatusline.self]
     )
 
     @Flag(name: .long, help: "Только мониторинг (без управления, не требует sudo)")
