@@ -26,6 +26,12 @@
 - Check: `liveHistory[metric]` empty ⇒ helper unavailable or history not yet loaded (buffer-only fallback); stale buffer fragments are dropped by `liveMergeSplit` (keeps last contiguous segment as tail).
 - bugs/live-narrow-window-empty-charts.md
 
+## If a locally built debug binary (`.build/debug/blik`, MenuBar, etc.) gets XPC error 4097 against the *installed* daemon — see release whitelist strips DEBUG suffixes
+- Mechanism: the PKG release build of `BlikHelper` compiles out `#if DEBUG` debug-suffix entries from the `ClientAuthorization` whitelist, so a debug-signed client is not authorized by an installed release daemon. Manifests as XPC connection failures (error 4097) with no data.
+- `Sources/BlikHelper/ClientAuthorization.swift` (`#if DEBUG` whitelist entries)
+- Fix for e2e: run the installed binary at `/usr/local/bin/blik`, not `.build/debug/blik`. Or run the client with `sudo` (direct SMC, no daemon).
+- modules/blik-cli.md (Failure hotspots), modules/blik-helper.md
+
 ## If idle CPU/RAM of Blik.app creeps up over hours/days (menu-bar-only, main window closed) — see MenuBarExtra observation-tracking leak
 - Diagnose: `sample <pid>` shows continuous CA display-cycle + `ObservationRegistrar.registerTracking/cancel` + `AnyKeyPath.hash` churn; `heap <pid> | grep ObservationRegistrar` count grows ~2/sec (fresh process ~35, flat).
 - `Sources/BlikApp/Views/MenuBar/MenuBarPopupView.swift` (`isPresented` gate, `.onAppear`/`.onDisappear`)

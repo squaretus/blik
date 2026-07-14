@@ -4,10 +4,14 @@
 Terminal-based fan controller for MacBook Pro (Apple Silicon M4). One executable, two privilege paths:
 - `sudo blik` — direct SMC access via IOKit (`SMCDataSource`).
 - `blik` (after PKG install) — all SMC operations go through the `BlikHelper` XPC daemon (`XPCDataSource`).
-Renders a four-column ANSI dashboard in raw-mode terminal, polls fans/sensors on a configurable interval, applies one of five speed presets via number keys. Also serves as a CLI surface for non-TUI sub-flows: `--diagnose` (SMC key dump), `--update` (force-update via daemon). The app is fully free: the former auth flags (`--token-stdin`, `--logout`, `--device-name`) and the `AuthStorage` / `CLIAPIClient` device-registration stack were **removed** when the licensing server was decommissioned (2026-07-13). The CLI now does no network I/O of its own — the only remote interaction is `--update`, routed through the daemon to GitHub Releases.
+Renders a four-column ANSI dashboard in raw-mode terminal, polls fans/sensors on a configurable interval, applies one of five speed presets via number keys. Also serves as a CLI surface for non-TUI sub-flows: `--diagnose` (SMC key dump), `--update` (force-update via daemon). Two `ArgumentParser` subcommands integrate the CLI with **Claude Code**: `claude-statusline` (one ANSI line of aggregated metrics + sparklines for the Claude Code statusLine) and `mcp` (a stdio MCP server exposing metrics/fan-control tools). The app is fully free: the former auth flags (`--token-stdin`, `--logout`, `--device-name`) and the `AuthStorage` / `CLIAPIClient` device-registration stack were **removed** when the licensing server was decommissioned (2026-07-13). The CLI now does no network I/O of its own — the only remote interaction is `--update`, routed through the daemon to GitHub Releases.
 
 ## Key files
-- `Sources/blik/Blik.swift` — `@main`, `ParsableCommand`. Single `run()` dispatches all sub-flows (update / XPC-TUI / direct-SMC TUI / diagnose / once). <!-- logout / token-stdin flows removed -->)
+- `Sources/blik/Blik.swift` — `@main`, `ParsableCommand`. Single `run()` dispatches all sub-flows (update / XPC-TUI / direct-SMC TUI / diagnose / once). `configuration.subcommands = [ClaudeStatusline, MCPCommand]`; no-argument invocation still runs the TUI. <!-- logout / token-stdin flows removed -->)
+- `Sources/blik/App/ClaudeStatuslineCommand.swift` — `ClaudeStatusline` subcommand (`claude-statusline`). Wires XPC data (sensors + `readResourcesSync` snapshot + 30-min history via `queryHistorySync`, 20 points) into `StatuslineRenderer`, prints one line. Daemon unreachable → empty stdout, exit 0.
+- `Sources/blik/UI/StatuslineRenderer.swift` — pure render layer: `buildMetrics` (aggregates P-core/E-core/GPU temps like `MetricSampleMapper`, RAM/VRAM used) + `render` (ANSI line) + `sparkline` (▁▂▃▄▅▆▇█). No I/O; missing sources are silently skipped.
+- `Sources/blik/App/MCPTools.swift` — pure MCP layer: `MCPMetricsSource` protocol (the XPC boundary, mocked in tests), `CurrentMetricsPayload` (Codable, `build(sensors:fans:reading:)`), `BlikMCPTools` (tool definitions + `handle` dispatcher). No XPC, no `print`.
+- `Sources/blik/App/MCPCommand.swift` — `MCPCommand` subcommand (`mcp`) + `XPCMetricsSource` (real `MCPMetricsSource`, lazy reconnect to daemon). Runs the swift-sdk `Server` over `StdioTransport` inside `Task` + `dispatchMain()`, `waitUntilCompleted`, `exit(0)` when stdin closes.
 - `Sources/blik/App/FanController.swift` — TUI loop (`poll → render → key → sleep`). Owns the `AppState`.
 - `Sources/blik/App/FanDataSource.swift` — protocol abstracting SMC vs XPC.
 - `Sources/blik/App/SMCDataSource.swift` — direct IOKit path. Owns `SMCReader`/`SMCWriter`, calls `restoreAutoMode` on startup.
@@ -27,12 +31,16 @@ Renders a four-column ANSI dashboard in raw-mode terminal, polls fans/sensors on
 - `Diagnostics.run(connection:)` — one-shot SMC key dump (`F*` and `T*` keys with decoded values).
 - `SignalHandler.install()` — installs SIGINT/SIGTERM handlers (sets `shouldTerminate` only).
 - `KeyEvent` cases — `up`, `down`, `pageUp`, `pageDown`, `preset(Int)` (0/25/50/75/100), `quit`, `none`.
+- `ClaudeStatusline.run()` — one-shot statusline. `MCPCommand.run()` — long-lived stdio MCP server.
+- `StatuslineRenderer.buildMetrics(sensors:snapshot:history:) → [StatuslineMetric]`, `.render([StatuslineMetric]) → String`, `.sparkline([Double]) → String`. Thresholds: temps ok<70≤warn<90≤crit; memory by fill ratio 0.7/0.9.
+- `BlikMCPTools.toolList` / `.handle(name:arguments:source:) → CallTool.Result`. Tools: `get_current_metrics`, `list_metrics`, `query_metric_history` (`metric_key` + `minutes`, clamped 1..10080), `set_fan_preset` (`percent` ∈ {0,25,50,75,100}, 0 = auto).
+- `CurrentMetricsPayload.build(sensors:fans:reading:)` — pure aggregation from domain models (same group-average math as `MetricSampleMapper`/Overview).
 <!-- removed: AuthStorage.{load,save,delete} and CLIAPIClient.{registerDevice,listDevices} entry points — files deleted -->
 
 ## Dependencies
 - `BlikCore` — `SMCConnection`, `SMCReader`, `SMCWriter`, `FanInfo`, `SensorInfo`, `AppState`, `SensorGroup`, `Constants`, `SMCParamStruct`, `SMCSelector`, `SMCFormat`, `SMCBytes`. <!-- removed: HardwareID (License/ dir deleted), LicenseStatus (unused) -->
-- `BlikXPC` — `BlikXPCClient` (sync wrappers), `UpdateService` (used only on `--update`).
-- External package: `apple/swift-argument-parser` (≥ 1.3.0).
+- `BlikXPC` — `BlikXPCClient` (sync wrappers: `readAllSensorsSync`, `readAllFansSync`, `readResourcesSync`, `queryHistorySync`, `listHistoryMetricsSync`, `setFanSpeedPresetSync`), `UpdateService` (used only on `--update`). `HistoryQueryRequest`/`HistoryQueryResponse`, `MetricKey` from `BlikCore`. `ResourceUsageCalculator.reading(from:to:)` for CPU% delta.
+- External package: `apple/swift-argument-parser` (≥ 1.3.0), `modelcontextprotocol/swift-sdk` (product `MCP`, imported only by `MCPTools.swift`/`MCPCommand.swift`).
 - System: `IOKit` (only with `SMCDataSource`), `Foundation` (`FileManager` for logging), `Darwin` (`termios`, `signal`, `ioctl`, `read`, `geteuid`). <!-- URLSession no longer used — no HTTP in CLI -->
 - Network: none. <!-- removed: licensing server at licenseServerURL — --token-stdin flow deleted -->
 
@@ -54,6 +62,8 @@ Renders a four-column ANSI dashboard in raw-mode terminal, polls fans/sensors on
 <!-- removed: Network (HTTP) — the --token-stdin device-registration POST is gone; CLI does no HTTP -->
 - **Process signals:** `signal(SIGINT, ...)` and `signal(SIGTERM, ...)` installed via `SignalHandler.install()`. Not restored on exit.
 - **No SwiftUI / no Cocoa main loop.** Pure run loop in `FanController.run()` driven by `usleep(Constants.pollIntervalMicroseconds)`.
+- **`claude-statusline`:** single `print()` to stdout (or nothing if daemon unreachable / no metrics), then exit 0. Read-only XPC calls, disconnects via `defer`.
+- **`mcp` server:** stdout is the MCP protocol channel — `print` is forbidden in this mode (all diagnostics go to STDERR via `FileHandle.standardError`). `get_current_metrics` performs `Thread.sleep(forTimeInterval: 1.0)` between two `readResourcesSync` snapshots to derive CPU%, so that tool call blocks ~1s. `set_fan_preset` drives **physical fans** through the daemon (`setFanSpeedPresetSync`) — a real side effect on hardware, unlike every other tool which is read-only.
 
 ## Invariants / assumptions
 <!-- generated, verify -->
@@ -82,6 +92,9 @@ Renders a four-column ANSI dashboard in raw-mode terminal, polls fans/sensors on
 - **`Update` path is fire-and-forget.** `UpdateService.checkAndInstall` returns once the daemon kicks `installer -pkg`; the daemon will then `bootout`/`bootstrap` itself, and the running `blik`'s XPC channel goes dead. Subsequent calls in the same process won't reconnect.
 - **`Logger.setup` truncates `blik.log` on each TUI start.** History is lost. Tail/diff-based workflows need to capture logs externally.
 - **`Logger` writes to CWD, not `~/Library/Logs` or `/tmp`.** Running `blik` from a read-only or world-writable directory has undefined log-file behavior (silent no-op or permission error).
+- **Debug CLI is NOT authorized by a release daemon (XPC error 4097).** The PKG release build of `BlikHelper` strips `#if DEBUG` debug-suffix entries from the `ClientAuthorization` whitelist, so a locally built `.build/debug/blik` cannot connect to the *installed* release daemon. For any e2e check of `blik mcp` / `blik claude-statusline` against the installed daemon, use the installed binary at `/usr/local/bin/blik`, not `.build/debug/blik`.
+- **`get_current_metrics` blocks ~1s per call** (two-snapshot CPU% delta). Fine for an on-demand MCP tool, but a client polling it in a tight loop will serialize on that sleep.
+- **`mcp` accidental stdout writes corrupt the protocol.** Any stray `print`/logging to stdout from a dependency mixes into the JSON-RPC stream and breaks the Claude Code MCP client. Keep all diagnostics on STDERR.
 - **`AppState.fans.count` mismatch:** `XPCDataSource.mergeFanData` handles count change (`currentFans = newFans`), but `SMCDataSource.mergeFanData` only updates indices that exist in both arrays — if the fan count somehow shrinks, stale entries persist in `state.fans`.
 
 ## Related docs
@@ -89,3 +102,4 @@ Renders a four-column ANSI dashboard in raw-mode terminal, polls fans/sensors on
 - `modules/blik-xpc.md` — `BlikXPCClient` sync API and `UpdateService`.
 - `modules/blik-helper.md` — daemon target of `--update` and the regular XPC TUI path.
 - `decisions/fully-free-server-decommission.md` — app went fully free, server decommissioned.
+- `features/mcp-and-statusline.md` — Claude Code integration (`mcp` server + `claude-statusline`).
