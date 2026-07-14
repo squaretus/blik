@@ -58,10 +58,10 @@ final class StatuslineRendererTests: XCTestCase {
             StatuslineMetric(label: "GPU", valueText: "95°", level: .crit, spark: [5, 6]),
         ]
         let out = StatuslineRenderer.render(metrics)
-        XCTAssertTrue(out.contains("\u{1B}[38;2;255;255;255m\u{1B}[1m48°"))  // значение — белое
-        XCTAssertTrue(out.contains("\u{1B}[38;2;48;209;88m"))    // ok → systemGreen (спарклайн)
-        XCTAssertTrue(out.contains("\u{1B}[38;2;255;214;10m"))   // warn → systemYellow
-        XCTAssertTrue(out.contains("\u{1B}[38;2;255;69;58m"))    // crit → systemRed
+        XCTAssertTrue(out.contains("\u{1B}[38;2;48;209;88m\u{1B}[1m48°"))    // ok → green значение
+        XCTAssertTrue(out.contains("\u{1B}[38;2;255;214;10m\u{1B}[1m75°"))   // warn → yellow значение
+        XCTAssertTrue(out.contains("\u{1B}[38;2;255;69;58m\u{1B}[1m95°"))    // crit → red значение
+        XCTAssertTrue(out.contains("\u{1B}[38;2;142;142;147m▁█"))            // спарклайн — серый
         XCTAssertFalse(out.contains("\u{1B}[32m"))
         XCTAssertFalse(out.contains("\u{1B}[90m"))
     }
