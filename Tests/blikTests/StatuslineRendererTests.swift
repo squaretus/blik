@@ -50,14 +50,16 @@ final class StatuslineRendererTests: XCTestCase {
 
     func testRenderUsesTruecolorNotPaletteCodes() {
         // Базовые ANSI-16 коды ([32m и т.п.) перекрашиваются палитрой темы
-        // терминала — цвета уровней должны идти truecolor'ом (38;2;R;G;B).
+        // терминала — все цвета идут truecolor'ом (38;2;R;G;B).
+        // Значения — белые (цвет уровня несёт спарклайн).
         let metrics = [
             StatuslineMetric(label: "CPU", valueText: "48°", level: .ok, spark: [1, 2]),
-            StatuslineMetric(label: "E", valueText: "75°", level: .warn, spark: []),
-            StatuslineMetric(label: "GPU", valueText: "95°", level: .crit, spark: []),
+            StatuslineMetric(label: "E", valueText: "75°", level: .warn, spark: [3, 4]),
+            StatuslineMetric(label: "GPU", valueText: "95°", level: .crit, spark: [5, 6]),
         ]
         let out = StatuslineRenderer.render(metrics)
-        XCTAssertTrue(out.contains("\u{1B}[38;2;48;209;88m"))    // ok → systemGreen
+        XCTAssertTrue(out.contains("\u{1B}[38;2;255;255;255m\u{1B}[1m48°"))  // значение — белое
+        XCTAssertTrue(out.contains("\u{1B}[38;2;48;209;88m"))    // ok → systemGreen (спарклайн)
         XCTAssertTrue(out.contains("\u{1B}[38;2;255;214;10m"))   // warn → systemYellow
         XCTAssertTrue(out.contains("\u{1B}[38;2;255;69;58m"))    // crit → systemRed
         XCTAssertFalse(out.contains("\u{1B}[32m"))

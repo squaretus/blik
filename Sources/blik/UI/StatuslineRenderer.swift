@@ -71,6 +71,7 @@ enum StatuslineRenderer {
     }
 
     private static let labelGray = truecolor(142, 142, 147)   // systemGray
+    private static let valueWhite = truecolor(255, 255, 255)
     private static let bold = "\u{1B}[1m"
     private static let reset = ANSIColor.reset.rawValue
 
@@ -78,7 +79,7 @@ enum StatuslineRenderer {
         metrics.map { m in
             var parts = [
                 labelGray + m.label + reset,
-                m.level.foreground + bold + m.valueText + reset,
+                valueWhite + bold + m.valueText + reset,
             ]
             if !m.spark.isEmpty {
                 parts.append(m.level.foreground + sparkline(m.spark) + reset)
