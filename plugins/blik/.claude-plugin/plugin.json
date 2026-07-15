@@ -1,0 +1,12 @@
+{
+  "name": "blik",
+  "description": "Метрики Mac в Claude Code: MCP-инструменты (температуры, CPU/GPU, RAM/VRAM, история, управление кулерами) и команда настройки статус-бара",
+  "version": "1.0.0",
+  "author": {
+    "name": "squaretus"
+  },
+  "homepage": "https://blik-app.ru",
+  "repository": "https://github.com/squaretus/blik",
+  "license": "MIT",
+  "keywords": ["monitoring", "macos", "temperature", "fans", "smc"]
+}

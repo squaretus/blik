@@ -5,7 +5,7 @@
 - macOS 26.0+ (Apple Silicon, протестировано на M4); Liquid Glass design language
 - SwiftUI (GUI app + MenuBar app, `@Observable @MainActor`), NSXPCConnection (XPC)
 - Локальная история метрик — SQLite (системная libsqlite3, линкуется в `BlikCore`)
-- Зависимости: `apple/swift-argument-parser` (CLI target)
+- Зависимости: `apple/swift-argument-parser`, `modelcontextprotocol/swift-sdk` (оба — только CLI target)
 - Приложение полностью бесплатное: серверного лицензирования, auth и телеметрии в коде нет (вырезаны 2026-07-13; сервер списан, остался только лэндинг на GitHub Pages)
 
 ## Сборка и запуск
@@ -30,8 +30,12 @@ sudo .build/debug/BlikMenuBar                    # Полное управлен
 
 # После установки PKG — CLI и MenuBar работают без sudo (через XPC daemon)
 blik                                             # TUI через XPC
+blik claude-statusline                           # Строка метрик для статус-бара Claude Code
+blik mcp                                         # MCP-сервер (stdio) для Claude Code
 open /Applications/Blik.app                      # MenuBar через XPC
 ```
+
+**Интеграция с Claude Code:** сабкоманды `claude-statusline` (ANSI-строка со спарклайнами, truecolor) и `mcp` (4 инструмента: get_current_metrics / list_metrics / query_metric_history / set_fan_preset). Репозиторий — маркетплейс плагинов Claude Code: `.claude-plugin/marketplace.json` + `plugins/blik/` (MCP-конфиг, команда `/blik:setup-statusline`); установка — `/plugin marketplace add squaretus/blik` → `/plugin install blik@blik`.
 
 ## Targets
 - `BlikCore` — библиотека (SMC, модели, Resources, **History** — SQLite-стор, константы). Линкует системную `libsqlite3` (`linkerSettings: [.linkedLibrary("sqlite3")]`), без package-зависимостей
@@ -39,7 +43,7 @@ open /Applications/Blik.app                      # MenuBar через XPC
 - `BlikShared` — библиотека (`@Observable` VM-слой: AppCoordinator + FanControlVM/ResourceVM/UpdateVM/AppSettingsVM + **MetricNameStore** + **Charts/** + BlikRuntime), зависит от BlikCore + BlikXPC
 - `BlikDesign` — библиотека (UI токены/компоненты/иконки; кнопки — нативный `.borderedProminent`)
 - `BlikHelper` — привилегированный LaunchDaemon (root; HelperDelegate + **HistoryRecorder** + ClientAuthorization + UpdateChecker), зависит от BlikCore + BlikXPC
-- `blik` — CLI executable, зависит от BlikCore + BlikXPC + ArgumentParser
+- `blik` — CLI executable, зависит от BlikCore + BlikXPC + ArgumentParser + MCP (swift-sdk)
 - `BlikMenuBar` — MenuBar app (SwiftUI), зависит от BlikCore + BlikXPC + BlikShared + BlikDesign
 - `BlikApp` — GUI app (SwiftUI, NavigationSplitView), зависит от BlikCore + BlikXPC + BlikShared + BlikDesign
 
@@ -53,15 +57,16 @@ open /Applications/Blik.app                      # MenuBar через XPC
 - `Sources/BlikShared/` — `@Observable @MainActor` VM-слой: `AppCoordinator` + `FanControlVM`/`ResourceVM`/`UpdateVM`/`AppSettingsVM` + `MetricNameStore` (инлайн-переименование метрик) + `Charts/` (ChartsVM, ChartTimeRange, ChartWidgetConfig/Store, LiveMetricBuffer, MetricCatalog) + `BlikRuntime` (lazy SMC/XPC + `helperSupportsHistory`)
 - `Sources/BlikDesign/` — токены (`DesignTokens`, `BlikPalette`, `AdaptiveColor`), компоненты (`BlikBanner`, `BlikStatusPill`, `BlikPresetButtons`, `BlikSectionHeader`, `BlikSearch`, `BlikPageContainer`, `BlikLogo`, `MenuBarImageRenderer`), цвета температуры
 - `Sources/BlikHelper/` — привилегированный daemon (HelperDelegate, **HistoryRecorder** — запись истории пока открыт клиент, ClientAuthorization, UpdateChecker, HelperLogger, main.swift)
-- `Sources/blik/UI/` — терминальный UI (ANSI escape codes, termios)
-- `Sources/blik/App/` — логика CLI (FanController, XPCDataSource/SMCDataSource/FanDataSource, SignalHandler, Logger)
+- `Sources/blik/UI/` — терминальный UI (ANSI escape codes, termios) + `StatuslineRenderer` (строка для статус-бара Claude Code)
+- `Sources/blik/App/` — логика CLI (FanController, XPCDataSource/SMCDataSource/FanDataSource, SignalHandler, Logger) + `ClaudeStatuslineCommand`, `MCPTools` (чистый слой инструментов, `MCPMetricsSource` — граница XPC), `MCPCommand` (stdio-сервер, `XPCMetricsSource`)
 - `Sources/BlikMenuBar/` — SwiftUI MenuBar app (использует `BlikShared.AppCoordinator`)
 - `Sources/BlikApp/` — SwiftUI GUI app (NavigationSplitView; вкладки Обзор/Температура/Ресурсы/**Графики**; Views/Preferences (App/About), Views/Charts, Views/Shared, Views/Sidebar; использует `BlikShared.AppCoordinator`)
 - `Resources/` — plists (Info, LaunchDaemon, LaunchAgent), HTML визарда, скрипт удаления
 - `scripts/` — build.sh (сборка PKG), preinstall/postinstall (скрипты PKG)
 - `Tests/BlikCoreTests/` — тесты ядра (конверсии, модели, History: HistoryStore/MetricSampleMapper/HistoryQueryModels)
 - `Tests/BlikSharedTests/` — тесты VM (FanControlVM, UpdateVM, MetricNameStore, ChartWidgetStore, LiveMetricBuffer, ChartsVM)
-- `Tests/blikTests/` — тесты CLI (ANSI stripping, keyboard)
+- `Tests/blikTests/` — тесты CLI (ANSI stripping, keyboard, StatuslineRenderer, MCPTools)
+- `.claude-plugin/` + `plugins/blik/` — маркетплейс и плагин Claude Code (конфиги, не Swift-код)
 
 ## Паттерны
 - Файл с `@main` называется `Blik.swift` / `BlikMenuBarApp.swift` / `BlikAppMain.swift` (не `main.swift` — конфликт с `@main`). Исключение: `BlikHelper/main.swift` (нет `@main`, используется `dispatchMain()`)

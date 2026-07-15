@@ -1,0 +1,14 @@
+{
+  "name": "blik",
+  "description": "Интеграция мониторинга Blik (Mac на Apple Silicon) с Claude Code",
+  "owner": {
+    "name": "squaretus"
+  },
+  "plugins": [
+    {
+      "name": "blik",
+      "source": "./plugins/blik",
+      "description": "Метрики Mac (температуры, CPU/GPU, RAM/VRAM, кулеры) в Claude Code: MCP-сервер + настройка статус-бара. Требует установленный Blik: https://github.com/squaretus/blik/releases"
+    }
+  ]
+}
