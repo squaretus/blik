@@ -56,7 +56,10 @@ public struct BlikPageContainer<Content: View>: View {
         content
             .scrollContentBackground(.hidden)
             .listStyle(.plain)
-            .padding(.horizontal, BlikPageMetrics.horizontalPadding)
+            // Горизонталь — через contentMargins, НЕ через .padding: padding сужает
+            // сам scroll-примитив, и скроллбар рисуется по краю контейнера вместо
+            // края окна. contentMargins сдвигает только контент — индикатор у края.
+            .contentMargins(.horizontal, BlikPageMetrics.horizontalPadding, for: .scrollContent)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .background(BlikPalette.bg.resolve(colorScheme))
     }

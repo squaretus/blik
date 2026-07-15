@@ -65,6 +65,9 @@ public final class ChartsVM {
     @ObservationIgnored private var liveHistoryTask: Task<Void, Never>?
     @ObservationIgnored private var tickCounter = 0
     @ObservationIgnored private var scrolling = false
+    /// Ответ live-истории, пришедший во время скролла, — применяется по его
+    /// окончании (публикация мимо гейта скролла фризила прокрутку).
+    @ObservationIgnored private var pendingLiveHistory: ([String: [HistoryPoint]], Int)?
     /// Как часто перерисовывать тяжёлые графики (сек) — независимо от 1s-сбора.
     @ObservationIgnored private let chartRenderEvery: TimeInterval = 2.0
     @ObservationIgnored private var isVisible = false
@@ -193,6 +196,10 @@ public final class ChartsVM {
         guard value != scrolling else { return }
         scrolling = value
         if !value {
+            if let (dict, bucket) = pendingLiveHistory {
+                pendingLiveHistory = nil
+                publishLiveHistory(dict, bucketSeconds: bucket)
+            }
             summaryTick &+= 1
             chartTick &+= 1
         }
@@ -254,8 +261,20 @@ public final class ChartsVM {
         for s in response.series {
             dict[s.metric] = s.points
         }
-        liveHistory = dict
-        rangeBucketSeconds = Swift.max(1, response.bucketSeconds)
+        publishLiveHistory(dict, bucketSeconds: Swift.max(1, response.bucketSeconds))
+    }
+
+    /// Единственная точка публикации live-истории. Все графики читают `liveHistory`
+    /// в body — публикация обязана уважать гейт скролла (иначе 4-секундный цикл
+    /// перестраивает все видимые графики прямо во время прокрутки) и не дёргать
+    /// observers идентичным payload'ом (`@Observable` не дедуплицирует).
+    func publishLiveHistory(_ dict: [String: [HistoryPoint]], bucketSeconds: Int) {
+        guard !scrolling else {
+            pendingLiveHistory = (dict, bucketSeconds)
+            return
+        }
+        if dict != liveHistory { liveHistory = dict }
+        if bucketSeconds != rangeBucketSeconds { rangeBucketSeconds = bucketSeconds }
     }
 
     // MARK: - Range load

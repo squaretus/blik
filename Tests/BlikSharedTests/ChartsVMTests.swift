@@ -100,3 +100,59 @@ final class ChartsVMTests: XCTestCase {
         XCTAssertEqual(vm.livePoints(for: MetricKey.memoryUsed, window: 3_600).count, 0)
     }
 }
+
+// MARK: - Публикация live-истории и скролл (fix/charts-scroll-freeze)
+
+extension ChartsVMTests {
+
+    private func makePoints(_ values: [Double]) -> [HistoryPoint] {
+        values.enumerated().map {
+            HistoryPoint(ts: Date(timeIntervalSince1970: Double($0.offset) * 60),
+                         min: $0.element, avg: $0.element, max: $0.element)
+        }
+    }
+
+    func test_live_history_publication_deferred_while_scrolling() {
+        let vm = ChartsVM(runtime: makeRuntime(historySupported: true), settings: AppSettingsVM())
+        let dict = ["cpu.pcore.avg": makePoints([1, 2, 3])]
+
+        vm.setScrolling(true)
+        vm.publishLiveHistory(dict, bucketSeconds: 60)
+        XCTAssertTrue(vm.liveHistory.isEmpty, "во время скролла liveHistory не публикуется")
+
+        vm.setScrolling(false)
+        XCTAssertEqual(vm.liveHistory, dict, "отложенная публикация применяется после скролла")
+        XCTAssertEqual(vm.rangeBucketSeconds, 60)
+    }
+
+    func test_live_history_equal_payload_does_not_invalidate_observers() {
+        let vm = ChartsVM(runtime: makeRuntime(historySupported: true), settings: AppSettingsVM())
+        let dict = ["cpu.pcore.avg": makePoints([1, 2, 3])]
+        vm.publishLiveHistory(dict, bucketSeconds: 60)
+
+        var invalidated = false
+        withObservationTracking {
+            _ = vm.liveHistory
+            _ = vm.rangeBucketSeconds
+        } onChange: {
+            invalidated = true
+        }
+
+        vm.publishLiveHistory(dict, bucketSeconds: 60)
+        XCTAssertFalse(invalidated, "идентичный ответ истории не должен инвалидировать графики")
+
+        vm.publishLiveHistory(["cpu.pcore.avg": makePoints([1, 2, 4])], bucketSeconds: 60)
+        XCTAssertTrue(invalidated, "изменившиеся данные — инвалидируют")
+    }
+
+    func test_scroll_end_without_pending_does_not_clear_history() {
+        let vm = ChartsVM(runtime: makeRuntime(historySupported: true), settings: AppSettingsVM())
+        let dict = ["cpu.pcore.avg": makePoints([1])]
+        vm.publishLiveHistory(dict, bucketSeconds: 30)
+
+        vm.setScrolling(true)
+        vm.setScrolling(false)
+        XCTAssertEqual(vm.liveHistory, dict, "скролл без новых данных не трогает историю")
+        XCTAssertEqual(vm.rangeBucketSeconds, 30)
+    }
+}
