@@ -4,11 +4,14 @@ import Foundation
 enum StatuslineLevel {
     case ok, warn, crit
 
-    var color: ANSIColor {
+    /// Truecolor (24-bit): базовые ANSI-16 коды перекрашиваются палитрой
+    /// темы терминала (у некоторых тем «green» — синий), RGB идёт как есть.
+    /// Цвета — системная палитра macOS (dark), как в GUI приложения.
+    var foreground: String {
         switch self {
-        case .ok: return .green
-        case .warn: return .yellow
-        case .crit: return .brightRed
+        case .ok: return StatuslineRenderer.truecolor(48, 209, 88)     // systemGreen
+        case .warn: return StatuslineRenderer.truecolor(255, 214, 10)  // systemYellow
+        case .crit: return StatuslineRenderer.truecolor(255, 69, 58)   // systemRed
         }
     }
 }
@@ -63,14 +66,23 @@ enum StatuslineRenderer {
         return String(format: "%.1f", gb).replacingOccurrences(of: ".", with: ",") + "G"
     }
 
+    static func truecolor(_ r: Int, _ g: Int, _ b: Int) -> String {
+        "\u{1B}[38;2;\(r);\(g);\(b)m"
+    }
+
+    private static let labelGray = truecolor(142, 142, 147)   // systemGray
+    private static let sparkGray = truecolor(142, 142, 147)   // как шкалы Claude Code
+    private static let bold = "\u{1B}[1m"
+    private static let reset = ANSIColor.reset.rawValue
+
     static func render(_ metrics: [StatuslineMetric]) -> String {
         metrics.map { m in
             var parts = [
-                ANSIRenderer.color(m.label, .gray),
-                ANSIRenderer.color(m.valueText, m.level.color, .bold),
+                labelGray + m.label + reset,
+                m.level.foreground + bold + m.valueText + reset,
             ]
             if !m.spark.isEmpty {
-                parts.append(ANSIRenderer.color(sparkline(m.spark), m.level.color))
+                parts.append(sparkGray + sparkline(m.spark) + reset)
             }
             return parts.joined(separator: " ")
         }.joined(separator: "  ")
