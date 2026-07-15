@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "blik": {
+      "type": "stdio",
+      "command": "/usr/local/bin/blik",
+      "args": ["mcp"]
+    }
+  }
+}
