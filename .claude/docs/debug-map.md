@@ -32,6 +32,18 @@
 - Fix for e2e: run the installed binary at `/usr/local/bin/blik`, not `.build/debug/blik`. Or run the client with `sudo` (direct SMC, no daemon).
 - modules/blik-cli.md (Failure hotspots), modules/blik-helper.md
 
+## If scrolling the «Графики» tab hitches/freezes every ~4 s during live polling — see observable published past the scroll gate
+- Mechanism: `ChartsVM.setScrolling` paused only the render ticks, but `liveHistoryLoop`→`fetchLiveHistory` wrote `liveHistory`/`rangeBucketSeconds` directly, bypassing the gate. Heavy `MetricChart` bodies read `charts.liveHistory` (via `ChartData.segments`) → every 4 s cycle rebuilt all visible charts mid-scroll. `@Observable` also doesn't dedupe → identical payloads redraw too.
+- `Sources/BlikShared/Charts/ChartsVM.swift` (`publishLiveHistory` — single publication point, defers to `pendingLiveHistory` while `scrolling`, skips equal payloads; `setScrolling(false)` flushes pending)
+- `Sources/BlikApp/Views/Charts/ChartFormatting.swift` (`ChartData.segments` — the heavy read of `liveHistory`)
+- Lesson: in `@Observable` architecture gate ALL writes to observable props that heavy bodies read, not just the "official" redraw ticks. Sibling to the observation-graph leak below.
+- bugs/charts-scroll-freeze-observable-bypass.md
+
+## If a scroll indicator draws 40 pt inside the window edge (any tab, not just Charts) — see BlikPageContainer contentMargins contract
+- Mechanism: `BlikPageContainer` insets pages horizontally. Using `.padding(.horizontal)` on the scroll primitive narrows the `List`/`ScrollView` itself, pushing the scrollbar inward. Must use `.contentMargins(.horizontal, …, for: .scrollContent)` — insets content only, scrollbar stays at window edge.
+- `Sources/BlikDesign/Components/BlikPageContainer.swift` (`.contentMargins(.horizontal, BlikPageMetrics.horizontalPadding, for: .scrollContent)`)
+- bugs/charts-scroll-freeze-observable-bypass.md (Fix, second bug)
+
 ## If idle CPU/RAM of Blik.app creeps up over hours/days (menu-bar-only, main window closed) — see MenuBarExtra observation-tracking leak
 - Diagnose: `sample <pid>` shows continuous CA display-cycle + `ObservationRegistrar.registerTracking/cancel` + `AnyKeyPath.hash` churn; `heap <pid> | grep ObservationRegistrar` count grows ~2/sec (fresh process ~35, flat).
 - `Sources/BlikApp/Views/MenuBar/MenuBarPopupView.swift` (`isPresented` gate, `.onAppear`/`.onDisappear`)
