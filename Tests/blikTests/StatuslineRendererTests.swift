@@ -4,25 +4,6 @@ import BlikCore
 
 final class StatuslineRendererTests: XCTestCase {
 
-    // MARK: - sparkline
-
-    func testSparklineEmpty() {
-        XCTAssertEqual(StatuslineRenderer.sparkline([]), "")
-    }
-
-    func testSparklineSinglePointIsMidBlock() {
-        XCTAssertEqual(StatuslineRenderer.sparkline([5]), "▄")
-    }
-
-    func testSparklineFlatSeriesIsMidBlocks() {
-        XCTAssertEqual(StatuslineRenderer.sparkline([3, 3, 3]), "▄▄▄")
-    }
-
-    func testSparklineAscendingUsesFullRange() {
-        let values = (0...7).map(Double.init)
-        XCTAssertEqual(StatuslineRenderer.sparkline(values), "▁▂▃▄▅▆▇█")
-    }
-
     // MARK: - Уровни
 
     func testTempLevelThresholds() {
@@ -48,31 +29,88 @@ final class StatuslineRendererTests: XCTestCase {
 
     // MARK: - render (проверяем через stripANSI, как существующие тесты)
 
+    private static let fullSet = [
+        StatuslineMetric(label: "CPU", valueText: "43°", level: .ok),
+        StatuslineMetric(label: "E-CORES", valueText: "46°", level: .ok),
+        StatuslineMetric(label: "GPU", valueText: "45°", level: .ok),
+        StatuslineMetric(label: "RAM", valueText: "11,2G", level: .warn),
+        StatuslineMetric(label: "VRAM", valueText: "1,2G", level: .ok),
+    ]
+
+    func testRenderSingleColumnDrawsFramedTable() {
+        let metrics = [StatuslineMetric(label: "CPU", valueText: "48°", level: .ok)]
+        let plain = DashboardView.stripANSI(StatuslineRenderer.render(metrics))
+        XCTAssertEqual(plain, """
+            ┌─────┐
+            │ CPU │
+            ├─────┤
+            │ 48° │
+            └─────┘
+            """)
+    }
+
+    func testRenderFullSetDrawsTable() {
+        let plain = DashboardView.stripANSI(StatuslineRenderer.render(Self.fullSet))
+        XCTAssertEqual(plain, """
+            ┌─────┬─────────┬─────┬───────┬──────┐
+            │ CPU │ E-CORES │ GPU │  RAM  │ VRAM │
+            ├─────┼─────────┼─────┼───────┼──────┤
+            │ 43° │   46°   │ 45° │ 11,2G │ 1,2G │
+            └─────┴─────────┴─────┴───────┴──────┘
+            """)
+    }
+
+    func testRenderCentersOddRemainderToTheRight() {
+        // Ширина колонки = max(2, 3) + 2 = 5; "AB" короче на 3 → 1 пробел слева, 2 справа.
+        let metrics = [StatuslineMetric(label: "AB", valueText: "XYZ", level: .ok)]
+        let lines = DashboardView.stripANSI(StatuslineRenderer.render(metrics))
+            .components(separatedBy: "\n")
+        XCTAssertEqual(lines[1], "│ AB  │")
+        XCTAssertEqual(lines[3], "│ XYZ │")
+    }
+
+    func testRenderKeepsAllLinesEqualWidth() {
+        let lines = DashboardView.stripANSI(StatuslineRenderer.render(Self.fullSet))
+            .components(separatedBy: "\n")
+        XCTAssertEqual(lines.count, 5)
+        XCTAssertEqual(Set(lines.map(\.count)).count, 1, "строки таблицы разъехались: \(lines)")
+    }
+
+    func testRenderDegradesToAvailableColumns() {
+        let metrics = [
+            StatuslineMetric(label: "CPU", valueText: "48°", level: .ok),
+            StatuslineMetric(label: "RAM", valueText: "16,2G", level: .warn),
+        ]
+        let plain = DashboardView.stripANSI(StatuslineRenderer.render(metrics))
+        XCTAssertEqual(plain, """
+            ┌─────┬───────┐
+            │ CPU │  RAM  │
+            ├─────┼───────┤
+            │ 48° │ 16,2G │
+            └─────┴───────┘
+            """)
+    }
+
+    func testRenderEmptyMetricsIsEmptyString() {
+        XCTAssertEqual(StatuslineRenderer.render([]), "")
+    }
+
     func testRenderUsesTruecolorNotPaletteCodes() {
         // Базовые ANSI-16 коды ([32m и т.п.) перекрашиваются палитрой темы
         // терминала — все цвета идут truecolor'ом (38;2;R;G;B).
-        // Значения — белые (цвет уровня несёт спарклайн).
         let metrics = [
-            StatuslineMetric(label: "CPU", valueText: "48°", level: .ok, spark: [1, 2]),
-            StatuslineMetric(label: "E", valueText: "75°", level: .warn, spark: [3, 4]),
-            StatuslineMetric(label: "GPU", valueText: "95°", level: .crit, spark: [5, 6]),
+            StatuslineMetric(label: "CPU", valueText: "48°", level: .ok),
+            StatuslineMetric(label: "E-CORES", valueText: "75°", level: .warn),
+            StatuslineMetric(label: "GPU", valueText: "95°", level: .crit),
         ]
         let out = StatuslineRenderer.render(metrics)
-        XCTAssertTrue(out.contains("\u{1B}[38;2;48;209;88m\u{1B}[1m48°"))    // ok → green значение
-        XCTAssertTrue(out.contains("\u{1B}[38;2;255;214;10m\u{1B}[1m75°"))   // warn → yellow значение
-        XCTAssertTrue(out.contains("\u{1B}[38;2;255;69;58m\u{1B}[1m95°"))    // crit → red значение
-        XCTAssertTrue(out.contains("\u{1B}[38;2;142;142;147m▁█"))            // спарклайн — серый
+        XCTAssertTrue(out.contains("\u{1B}[38;2;48;209;88m\u{1B}[1m 48° "))    // ok → green
+        XCTAssertTrue(out.contains("\u{1B}[38;2;255;214;10m\u{1B}[1m   75°   ")) // warn → yellow
+        XCTAssertTrue(out.contains("\u{1B}[38;2;255;69;58m\u{1B}[1m 95° "))    // crit → red
+        XCTAssertTrue(out.contains("\u{1B}[38;2;142;142;147m│"))                // рамка — серая
+        XCTAssertTrue(out.contains("\u{1B}[38;2;142;142;147m CPU "))            // заголовок — серый
         XCTAssertFalse(out.contains("\u{1B}[32m"))
         XCTAssertFalse(out.contains("\u{1B}[90m"))
-    }
-
-    func testRenderJoinsBlocksAndSkipsEmptySpark() {
-        let metrics = [
-            StatuslineMetric(label: "CPU", valueText: "48°", level: .ok, spark: [0, 7]),
-            StatuslineMetric(label: "RAM", valueText: "16,2G", level: .warn, spark: []),
-        ]
-        let plain = DashboardView.stripANSI(StatuslineRenderer.render(metrics))
-        XCTAssertEqual(plain, "CPU 48° ▁█  RAM 16,2G")
     }
 
     // MARK: - buildMetrics
@@ -99,32 +137,24 @@ final class StatuslineRendererTests: XCTestCase {
         ]
         let gpu = GPUStats(utilizationPercent: 10, memoryUsed: 1_890_000_000,
                            memoryTotal: 34_359_738_368)
-        let history = HistoryQueryResponse(series: [
-            HistorySeries(metric: "cpu.pcore.avg",
-                          points: [HistoryPoint(ts: Date(), min: 40, avg: 45, max: 50)])
-        ], bucketSeconds: 60)
 
         let metrics = StatuslineRenderer.buildMetrics(
-            sensors: sensors, snapshot: snapshot(gpu: gpu), history: history)
+            sensors: sensors, snapshot: snapshot(gpu: gpu))
 
-        XCTAssertEqual(metrics.map(\.label), ["CPU", "E", "GPU", "RAM", "VRAM"])
+        XCTAssertEqual(metrics.map(\.label), ["CPU", "E-CORES", "GPU", "RAM", "VRAM"])
         XCTAssertEqual(metrics[0].valueText, "48°")   // (40+56)/2
-        XCTAssertEqual(metrics[0].spark, [45])         // avg-точки из истории
         XCTAssertEqual(metrics[3].valueText, "16,2G")
         XCTAssertEqual(metrics[4].valueText, "1,8G")
-        XCTAssertEqual(metrics[1].spark, [])           // истории по ключу нет
     }
 
     func testBuildMetricsSkipsMissingBlocks() {
         // Нет GPU-сенсоров, нет GPUStats, нет snapshot → только CPU/E
         let sensors = [sensor("Tp01", .cpuCores, 40), sensor("Te01", .npuECores, 52)]
-        let metrics = StatuslineRenderer.buildMetrics(
-            sensors: sensors, snapshot: nil, history: nil)
-        XCTAssertEqual(metrics.map(\.label), ["CPU", "E"])
+        let metrics = StatuslineRenderer.buildMetrics(sensors: sensors, snapshot: nil)
+        XCTAssertEqual(metrics.map(\.label), ["CPU", "E-CORES"])
     }
 
     func testBuildMetricsEmptyEverythingIsEmpty() {
-        XCTAssertTrue(StatuslineRenderer.buildMetrics(
-            sensors: [], snapshot: nil, history: nil).isEmpty)
+        XCTAssertTrue(StatuslineRenderer.buildMetrics(sensors: [], snapshot: nil).isEmpty)
     }
 }

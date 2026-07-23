@@ -21,8 +21,9 @@ blik                           # CLI TUI через XPC (после устано
 
 ## Соглашения
 
-- Ветки: `feature/<имя>` — новая разработка, `fix/<имя>` — исправления/чистка. **Коммит-сообщение строго равно имени ветки** — без описаний, тел, эмодзи, AI-меток; squash-merge при PR объединяет коммиты в одну запись. Правило переопределяет глобальный формат `{номер задачи} - {Название}`.
+- Ветки: `feature/<имя>` — новая разработка, `fix/<имя>` — исправления/чистка. **Заголовок коммита строго равен имени ветки** — без описаний, тел, эмодзи; squash-merge при PR объединяет коммиты в одну запись. Правило переопределяет глобальный формат `{номер задачи} - {Название}`.
+- **Co-authorship — исключение этого репозитория.** Коммиты, сделанные с Claude, получают трейлер `Co-Authored-By: Claude <модель> <noreply@anthropic.com>` — владелец хочет видеть Claude в контрибьюторах. Это единственное допустимое дополнение к заголовку и осознанное исключение из глобального запрета «никаких упоминаний Claude/AI в коммитах» (`~/.claude/CLAUDE.md`).
 - Файл с `@main` называется по имени приложения (`Blik.swift`, `BlikMenuBarApp.swift`, `BlikAppMain.swift`), не `main.swift` — конфликт с `@main`. Исключение: `BlikHelper/main.swift` (без `@main`, используется `dispatchMain()`).
 - Sleep/wake: polling-Task'и VM отменяются/перезапускаются через `addObserver` на `NSWorkspace.willSleepNotification`/`didWakeNotification` со stored token — НЕ через async sequence (`Notification` не Sendable под Swift 6).
 - NSAlert вместо SwiftUI `.alert` в MenuBarExtra (баг SwiftUI: `.alert` закрывает popover).
-- Интеграция с Claude Code: сабкоманды `blik claude-statusline` (ANSI-строка метрик) и `blik mcp` (stdio-сервер, 4 инструмента). Репозиторий — маркетплейс плагинов Claude Code: `.claude-plugin/marketplace.json` + `plugins/blik/`; установка — `/plugin marketplace add squaretus/blik` → `/plugin install blik@blik`.
+- Интеграция с Claude Code: сабкоманды `blik claude-statusline` (ANSI-таблица метрик) и `blik mcp` (stdio-сервер, 4 инструмента). Репозиторий — маркетплейс плагинов Claude Code: `.claude-plugin/marketplace.json` + `plugins/blik/`; установка — `/plugin marketplace add squaretus/blik` → `/plugin install blik@blik`.

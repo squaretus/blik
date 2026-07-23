@@ -19,7 +19,7 @@ swift test                     # Тесты
 scripts/build.sh 1.2.0         # PKG-установщик → .build/release_build/Blik-1.2.0.pkg
 open /Applications/Blik.app    # GUI/MenuBar через XPC (после установки PKG)
 blik                           # CLI TUI через XPC (без sudo)
-blik claude-statusline         # Одна ANSI-строка метрик для статус-бара Claude Code
+blik claude-statusline         # ANSI-таблица метрик для статус-бара Claude Code
 blik mcp                       # MCP-сервер (stdio) для Claude Code
 sudo .build/debug/blik         # CLI напрямую через SMC (без установленного daemon'а)
 ```

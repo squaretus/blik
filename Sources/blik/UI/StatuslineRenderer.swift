@@ -20,28 +20,11 @@ struct StatuslineMetric {
     let label: String
     let valueText: String
     let level: StatuslineLevel
-    let spark: [Double]
 }
 
-/// Чистый рендер строки для статус-бара Claude Code: значения → ANSI-строка.
+/// Чистый рендер таблицы метрик для статус-бара Claude Code.
 /// Не делает I/O — источник данных собирает вызывающая сторона.
 enum StatuslineRenderer {
-    private static let blocks: [Character] = ["▁", "▂", "▃", "▄", "▅", "▆", "▇", "█"]
-
-    /// Окно истории для спарклайнов.
-    static let historyWindow: TimeInterval = 30 * 60
-    /// Точек на спарклайн (maxPointsPerSeries запроса истории).
-    static let sparkPoints = 20
-
-    static func sparkline(_ values: [Double]) -> String {
-        guard let minV = values.min(), let maxV = values.max() else { return "" }
-        guard maxV > minV else { return String(repeating: "▄", count: values.count) }
-        let span = maxV - minV
-        return String(values.map { value in
-            let idx = Int(((value - minV) / span * 7).rounded())
-            return blocks[max(0, min(7, idx))]
-        })
-    }
 
     static func tempLevel(_ celsius: Double) -> StatuslineLevel {
         switch celsius {
@@ -70,65 +53,89 @@ enum StatuslineRenderer {
         "\u{1B}[38;2;\(r);\(g);\(b)m"
     }
 
-    private static let labelGray = truecolor(142, 142, 147)   // systemGray
-    private static let sparkGray = truecolor(142, 142, 147)   // как шкалы Claude Code
+    private static let labelGray = truecolor(142, 142, 147)   // systemGray — рамка и заголовки
     private static let bold = "\u{1B}[1m"
     private static let reset = ANSIColor.reset.rawValue
 
-    static func render(_ metrics: [StatuslineMetric]) -> String {
-        metrics.map { m in
-            var parts = [
-                labelGray + m.label + reset,
-                m.level.foreground + bold + m.valueText + reset,
-            ]
-            if !m.spark.isEmpty {
-                parts.append(sparkGray + sparkline(m.spark) + reset)
-            }
-            return parts.joined(separator: " ")
-        }.joined(separator: "  ")
+    /// Ширина колонки — по самому длинному из заголовка и значения плюс
+    /// по пробелу с каждой стороны, чтобы текст не липнул к рамке.
+    private static func columnWidths(_ metrics: [StatuslineMetric]) -> [Int] {
+        metrics.map { max($0.label.count, $0.valueText.count) + 2 }
     }
 
-    /// Сборка метрик из живых данных + истории. Отсутствующие источники
-    /// пропускаются (деградация без ошибок).
-    static func buildMetrics(sensors: [SensorInfo], snapshot: ResourceSnapshot?,
-                             history: HistoryQueryResponse?) -> [StatuslineMetric] {
-        var spark: [String: [Double]] = [:]
-        for series in history?.series ?? [] {
-            spark[series.metric] = series.points.map(\.avg)
-        }
+    /// Центрирование: лишний пробел при нечётной разнице уходит вправо.
+    private static func centered(_ text: String, width: Int) -> String {
+        let free = max(0, width - text.count)
+        let left = free / 2
+        return String(repeating: " ", count: left)
+            + text
+            + String(repeating: " ", count: free - left)
+    }
 
+    private static func rule(_ left: String, _ joint: String, _ right: String,
+                             _ widths: [Int]) -> String {
+        let segments = widths.map { String(repeating: "─", count: $0) }
+        return labelGray + left + segments.joined(separator: joint) + right + reset
+    }
+
+    private static func row(_ cells: [String]) -> String {
+        let bar = labelGray + "│" + reset
+        return bar + cells.joined(separator: bar) + bar
+    }
+
+    static func render(_ metrics: [StatuslineMetric]) -> String {
+        guard !metrics.isEmpty else { return "" }
+        let widths = columnWidths(metrics)
+
+        let headers = row(zip(metrics, widths).map { metric, width in
+            labelGray + centered(metric.label, width: width) + reset
+        })
+        let values = row(zip(metrics, widths).map { metric, width in
+            metric.level.foreground + bold + centered(metric.valueText, width: width) + reset
+        })
+
+        return [
+            rule("┌", "┬", "┐", widths),
+            headers,
+            rule("├", "┼", "┤", widths),
+            values,
+            rule("└", "┴", "┘", widths),
+        ].joined(separator: "\n")
+    }
+
+    /// Сборка метрик из живых данных. Отсутствующие источники пропускаются
+    /// (деградация без ошибок) — колонка просто не рисуется.
+    static func buildMetrics(sensors: [SensorInfo],
+                             snapshot: ResourceSnapshot?) -> [StatuslineMetric] {
         var out: [StatuslineMetric] = []
 
-        let tempBlocks: [(SensorGroup, String, String)] = [
-            (.cpuCores, "CPU", MetricKey.tempPCoreAvg),
-            (.npuECores, "E", MetricKey.tempECoreAvg),
-            (.gpuCores, "GPU", MetricKey.tempGPUAvg),
+        let tempBlocks: [(SensorGroup, String)] = [
+            (.cpuCores, "CPU"),
+            (.npuECores, "E-CORES"),
+            (.gpuCores, "GPU"),
         ]
-        for (group, label, metricKey) in tempBlocks {
+        for (group, label) in tempBlocks {
             let inGroup = sensors.filter { $0.group == group }
             guard !inGroup.isEmpty else { continue }
             let avg = inGroup.map(\.temperature).reduce(0, +) / Double(inGroup.count)
             out.append(StatuslineMetric(
                 label: label,
                 valueText: "\(Int(avg.rounded()))°",
-                level: tempLevel(avg),
-                spark: spark[metricKey] ?? []))
+                level: tempLevel(avg)))
         }
 
         if let memory = snapshot?.memory {
             out.append(StatuslineMetric(
                 label: "RAM",
                 valueText: gigabytes(memory.used),
-                level: fillLevel(used: Double(memory.used), total: Double(memory.total)),
-                spark: spark[MetricKey.memoryUsed] ?? []))
+                level: fillLevel(used: Double(memory.used), total: Double(memory.total))))
         }
 
         if let gpu = snapshot?.gpu {
             out.append(StatuslineMetric(
                 label: "VRAM",
                 valueText: gigabytes(gpu.memoryUsed),
-                level: fillLevel(used: Double(gpu.memoryUsed), total: Double(gpu.memoryTotal)),
-                spark: spark[MetricKey.gpuMemoryUsed] ?? []))
+                level: fillLevel(used: Double(gpu.memoryUsed), total: Double(gpu.memoryTotal))))
         }
 
         return out
